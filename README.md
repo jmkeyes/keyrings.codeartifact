@@ -22,3 +22,26 @@ hosted within CodeArtifact. It will use any appropriate AWS credentials provided
 ```
 --index-url https://${DOMAIN}-${ACCOUNT}.d.codeartifact.${REGION}.amazonaws.com/pypi/${REPOSITORY}/simple/
 ```
+
+Config
+------
+This backend provides a number of configuration options to allow configuration of the aws credentials.
+
+Configuration is specified within a `[codeartifact]` section of the the `keyring` library config file.
+Run `keyring diagnose` to find its as the location can be different depending on the platform.
+
+
+### Options
+- `aws_access_key_id` Specifies the key ID used to authenticate with AWS.
+- `aws_secret_access_key` Specifies the secret key used to authenticate with AWS.
+- `profile_name` Specifies the name of a specific profile to use with the AWS client.
+
+For more explanation of these options see the [AWS CLI documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html).
+
+Example:
+```ini
+[codeartifact]
+profile_name=profile_name
+aws_access_key_id=xxxxxxxxx
+aws_secret_access_key=xxxxxxxxx
+```

@@ -1,16 +1,47 @@
 #!/usr/bin/env python
 
+from functools import cache
+import os
 import re
 import logging
+import configparser
 
 import boto3
-import botocore
 
 from keyring import backend
 from keyring import credentials
+from keyring.util.platform_ import config_root
 
 from datetime import datetime
 from urllib.parse import urlparse
+
+
+# Allowed options for this backend.
+_INI_OPTIONS = {
+  "aws_access_key_id",
+  "aws_secret_access_key",
+  "profile_name",
+}
+
+
+@cache
+def _load_config():
+    keyring_config_file = config_root() / 'keyringrc.cfg'
+
+    if not os.path.exists(keyring_config_file):
+        return {}
+
+    config = configparser.RawConfigParser()
+    config.read(keyring_config_file)
+
+    cfg = {}
+    for option in _INI_OPTIONS:
+        try:
+            cfg[option] = config.get("codeartifact", option)
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            pass
+
+    return cfg
 
 
 class CodeArtifactBackend(backend.KeyringBackend):
@@ -53,8 +84,12 @@ class CodeArtifactBackend(backend.KeyringBackend):
         tzinfo = datetime.now().astimezone().tzinfo
         now = datetime.now(tz=tzinfo)
 
+        # Load config file and create session with the parameters.
+        session_config = _load_config()
+        session = boto3.Session(**session_config)
+
         # Create a CodeArtifact client for this repository's region.
-        client = boto3.client('codeartifact', region_name=region)
+        client = session.client('codeartifact', region_name=region)
 
         # Ask for an authorization token using the current AWS credentials.
         response = client.get_authorization_token(
