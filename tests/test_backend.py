@@ -1,23 +1,15 @@
+# Keyring backend tests.
 
 import pytest
 
 import boto3
+import botocore
+
 import keyring
 import keyrings.codeartifact
 
 from datetime import datetime
 
-
-class MockCodeArtifactClient:
-    def __init__(self, expiration, authorization_token):
-        self.authorization_token = authorization_token
-        self.expiration = expiration
-
-    def get_authorization_token(self, **kwargs):
-        return {
-            'authorizationToken': self.authorization_token,
-            'expiration': self.expiration,
-        }
 
 @pytest.fixture
 def backend():
@@ -48,12 +40,24 @@ def test_get_credential_unsupported_host(backend):
     assert keyring.get_credential("https://example.com/", None) == None
 
 def test_get_credential_supported_host(backend, monkeypatch):
-    def mock(*args, **kwargs):
+    def _make_api_call(client, *args, **kwargs):
+        # We should only ever call GetAuthorizationToken
+        assert args[0] == 'GetAuthorizationToken'
+
+        # We should only ever supply these parameters.
+        assert args[1]['domain'] == 'domain'
+        assert args[1]['domainOwner'] == '000000000000'
+        assert args[1]['durationSeconds'] == 3600
+
         tzinfo = datetime.now().astimezone().tzinfo
         expiration = datetime.now(tz=tzinfo)
-        return MockCodeArtifactClient(expiration, 'TOKEN')
 
-    monkeypatch.setattr(boto3, "client", mock)
+        return {
+            'authorizationToken': 'TOKEN',
+            'expiration': expiration,
+        }
+
+    monkeypatch.setattr(botocore.client.BaseClient, '_make_api_call', _make_api_call)
 
     credentials = keyring.get_credential(
         'https://domain-000000000000.d.codeartifact.region.amazonaws.com/pypi/repository',
