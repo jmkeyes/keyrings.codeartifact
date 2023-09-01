@@ -84,16 +84,26 @@ class CodeArtifactBackend(backend.KeyringBackend):
         tzinfo = datetime.now().astimezone().tzinfo
         now = datetime.now(tz=tzinfo)
 
-        # Load config file and create session with the parameters.
-        session_config = _load_config()
-        session = boto3.Session(**session_config)
+        # Load our configuration file.
+        config = _load_config()
+
+        # Create session with any supplied configuration.
+        session = boto3.Session(
+            region_name=region,
+            profile_name=config.get('profile_name'),
+            aws_access_key_id=config.get('aws_access_key_id'),
+            aws_secret_access_key=config.get('aws_secret_access_key'),
+        )
 
         # Create a CodeArtifact client for this repository's region.
         client = session.client('codeartifact', region_name=region)
 
+        # Authorization tokens should be good for an hour by default.
+        token_duration = int(config.get('token_duration', 3600))
+
         # Ask for an authorization token using the current AWS credentials.
         response = client.get_authorization_token(
-            domain=domain, domainOwner=account, durationSeconds=3600
+            domain=domain, domainOwner=account, durationSeconds=token_duration
         )
 
         # Give up if the token has already expired.
