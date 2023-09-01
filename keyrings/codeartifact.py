@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from functools import cache
 import os
 import re
 import logging
@@ -12,6 +11,7 @@ from keyring import backend
 from keyring import credentials
 from keyring.util.platform_ import config_root
 
+from functools import cache
 from datetime import datetime
 from urllib.parse import urlparse
 
