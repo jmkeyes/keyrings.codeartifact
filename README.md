@@ -31,18 +31,26 @@ These configuration options can be specified within a `[codeartifact]` section o
 
 Run `keyring diagnose` to find its as the location; it varies between different platforms.
 
+Available options:
 
-### Options
-- `aws_access_key_id` Specifies the key ID used to authenticate with AWS.
-- `aws_secret_access_key` Specifies the secret key used to authenticate with AWS.
-- `profile_name` Specifies the name of a specific profile to use with the AWS client.
+  - `profile_name`: Use a specific AWS profile to authenticate with AWS.
+  - `token_duration`: Validity period (in seconds) for retieved authorization tokens.
+  - `aws_access_key_id`: Use a specific AWS access key to authenticate with AWS.
+  - `aws_secret_access_key`: Use a specific AWS secret access key to authenticate with AWS.
 
 For more explanation of these options see the [AWS CLI documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html).
 
-Example:
+An example `keyringrc.cfg` section:
+
 ```ini
 [codeartifact]
-profile_name=profile_name
+# Tokens should only be valid for 30 minutes.
+token_duration=1800
+
+# Use the 'default' profile name.
+profile_name=default
+
+# Use the following access keys.
 aws_access_key_id=xxxxxxxxx
 aws_secret_access_key=xxxxxxxxx
 ```
