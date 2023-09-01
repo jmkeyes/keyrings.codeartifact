@@ -25,10 +25,11 @@ hosted within CodeArtifact. It will use any appropriate AWS credentials provided
 
 Config
 ------
-This backend provides a number of configuration options to allow configuration of the aws credentials.
+This backend provides a number of configuration options to modify the behaviour of the AWS client.
 
-Configuration is specified within a `[codeartifact]` section of the the `keyring` library config file.
-Run `keyring diagnose` to find its as the location can be different depending on the platform.
+These configuration options can be specified within a `[codeartifact]` section of the `keyringrc.cfg`.
+
+Run `keyring diagnose` to find its as the location; it varies between different platforms.
 
 
 ### Options
