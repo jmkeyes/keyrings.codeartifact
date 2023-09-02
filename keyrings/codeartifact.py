@@ -18,16 +18,16 @@ from urllib.parse import urlparse
 
 # Allowed options for this backend.
 _INI_OPTIONS = {
-  "profile_name",
-  "token_duration",
-  "aws_access_key_id",
-  "aws_secret_access_key",
+    "profile_name",
+    "token_duration",
+    "aws_access_key_id",
+    "aws_secret_access_key",
 }
 
 
 @cache
 def _load_config():
-    keyring_config_file = config_root() / 'keyringrc.cfg'
+    keyring_config_file = config_root() / "keyringrc.cfg"
 
     if not os.path.exists(keyring_config_file):
         return {}
@@ -46,20 +46,20 @@ def _load_config():
 
 
 class CodeArtifactBackend(backend.KeyringBackend):
-    REGEX = r'^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$'
+    REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
 
     priority = 9.9
 
     def get_credential(self, service, username):
         authorization_token = self.get_password(service, username)
         if authorization_token:
-            return credentials.SimpleCredential('aws', authorization_token)
+            return credentials.SimpleCredential("aws", authorization_token)
 
     def get_password(self, service, username):
         url = urlparse(service)
 
         # Do a quick check to see if this service URL applies to us.
-        if url.hostname is None or not url.hostname.endswith('.amazonaws.com'):
+        if url.hostname is None or not url.hostname.endswith(".amazonaws.com"):
             return
 
         # Split the hostname into its components.
@@ -74,11 +74,11 @@ class CodeArtifactBackend(backend.KeyringBackend):
         domain, account, region = match.group(1, 2, 3)
 
         # Split the path into its repository type and name.
-        repository_type, repository_name = url.path.strip('/').split('/', 1)
+        repository_type, repository_name = url.path.strip("/").split("/", 1)
 
         # Only continue if this was a PyPi repository.
-        if repository_type != 'pypi':
-            logging.warning(f'Not an AWS CodeArtifact PyPi repository: {service}')
+        if repository_type != "pypi":
+            logging.warning(f"Not an AWS CodeArtifact PyPi repository: {service}")
             return
 
         # Figure out our local timezone from the current time.
@@ -91,16 +91,16 @@ class CodeArtifactBackend(backend.KeyringBackend):
         # Create session with any supplied configuration.
         session = boto3.Session(
             region_name=region,
-            profile_name=config.get('profile_name'),
-            aws_access_key_id=config.get('aws_access_key_id'),
-            aws_secret_access_key=config.get('aws_secret_access_key'),
+            profile_name=config.get("profile_name"),
+            aws_access_key_id=config.get("aws_access_key_id"),
+            aws_secret_access_key=config.get("aws_secret_access_key"),
         )
 
         # Create a CodeArtifact client for this repository's region.
-        client = session.client('codeartifact', region_name=region)
+        client = session.client("codeartifact", region_name=region)
 
         # Authorization tokens should be good for an hour by default.
-        token_duration = int(config.get('token_duration', 3600))
+        token_duration = int(config.get("token_duration", 3600))
 
         # Ask for an authorization token using the current AWS credentials.
         response = client.get_authorization_token(
@@ -108,11 +108,11 @@ class CodeArtifactBackend(backend.KeyringBackend):
         )
 
         # Give up if the token has already expired.
-        if response.get('expiration', now) <= now:
+        if response.get("expiration", now) <= now:
             logging.warning("Received an expired CodeArtifact token!")
             return
 
-        return response.get('authorizationToken')
+        return response.get("authorizationToken")
 
     def set_password(self, service, username, password):
         # Defer setting a password to the next backend
