@@ -18,9 +18,10 @@ from urllib.parse import urlparse
 
 # Allowed options for this backend.
 _INI_OPTIONS = {
+  "profile_name",
+  "token_duration",
   "aws_access_key_id",
   "aws_secret_access_key",
-  "profile_name",
 }
 
 
