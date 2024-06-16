@@ -15,7 +15,7 @@ jobs:
 
     steps:
     - name: 🛒 Checkout repository source code.
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         # Always fetch the full repository.
         fetch-depth: 0
