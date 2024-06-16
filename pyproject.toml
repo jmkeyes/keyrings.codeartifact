@@ -1,6 +1,43 @@
+# See PEP 518 for the spec of this file
+# https://www.python.org/dev/peps/pep-0518/
+
 [build-system]
-requires = ["setuptools>=56", "setuptools_scm[toml]>=3.4.1", "wheel"]
+requires = ["setuptools >= 61.0", "setuptools_scm >= 8", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "keyrings.codeartifact"
+description = "Automatically retrieve credentials for AWS CodeArtifact."
+dynamic = ["version", "dependencies", "optional-dependencies"]
+keywords = ["aws", "codeartifact", "keyring"]
+license = { file = "LICENSE" }
+requires-python = ">= 3.8.0"
+readme = "README.md"
+authors = [
+  { name = "Joshua M. Keyes", email = "joshua.michael.keyes@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+
+[project.urls]
+Homepage = "https://github.com/jmkeyes/keyrings.codeartifact"
+Issues = "https://github.com/jmkeyes/keyrings.codeartifact/issues"
+Repository = "https://github.com/jmkeyes/keyrings.codeartifact.git"
+
+[project.entry-points."keyring.backends"]
+"AWS CodeArtifact" = "keyrings.codeartifact"
+
+[tool.setuptools.dynamic.dependencies]
+file = ["requirements.txt"]
+
+[tool.setuptools.dynamic.optional-dependencies]
+devel = { file = ["requirements-dev.txt"] }
+testing = { file = ["requirements-test.txt"] }
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"  # required for PyPI and TestPyPI
