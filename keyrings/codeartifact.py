@@ -1,54 +1,121 @@
-#!/usr/bin/env python
+# codeartifact.py -- keyring backend
 
-import os
 import re
-import logging
-import configparser
-
 import boto3
+import logging
 
-from keyring import backend
-from keyring import credentials
-from keyring.util.platform_ import config_root
-
-from functools import cache
+from pathlib import PurePath
 from datetime import datetime
 from urllib.parse import urlparse
 
+from keyring import backend, credentials
+from keyring.util.platform_ import config_root
 
-# Allowed options for this backend.
-_INI_OPTIONS = {
-    "profile_name",
-    "token_duration",
-    "aws_access_key_id",
-    "aws_secret_access_key",
-}
+from typing import NamedTuple
+from configparser import RawConfigParser
 
 
-@cache
-def _load_config():
-    keyring_config_file = config_root() / "keyringrc.cfg"
+class Qualifier(NamedTuple):
+    domain: str = None
+    account: str = None
+    region: str = None
+    name: str = None
 
-    if not os.path.exists(keyring_config_file):
-        return {}
 
-    config = configparser.RawConfigParser()
-    config.read(keyring_config_file)
+class CodeArtifactKeyringConfig:
+    DEFAULT_SECTION = "codeartifact"
+    SECTION_RE = re.compile(r"^codeartifact ?")
 
-    cfg = {}
-    for option in _INI_OPTIONS:
-        try:
-            cfg[option] = config.get("codeartifact", option)
-        except (configparser.NoSectionError, configparser.NoOptionError):
-            pass
+    QUALIFIER_FIELDS = "|".join(Qualifier._fields)
+    QUALIFIER_RE = re.compile(
+        rf"""
+        (?P<key>{QUALIFIER_FIELDS})= # Key is one of the fields.
+        (?P<quote>["']?)             # The opening quote.
+        (?P<value>[\S\s]*?)          # The value of the field.
+        (?P=quote)                   # The closing quote.
+        (?:$| )                      # A space or end-of-string.
+    """,
+        re.VERBOSE | re.IGNORECASE,
+    )
 
-    return cfg
+    def __init__(self, config_file):
+        # Customize RawConfigParser to allow inline comments.
+        config_parser = RawConfigParser(inline_comment_prefixes=("#", ";"))
+
+        # Anything in the [codeartifact] section is a default.
+        config_parser.default_section = self.DEFAULT_SECTION
+
+        # Load the configuration file.
+        config_parser.read(config_file)
+
+        # Collect the defaults before we go further.
+        self.defaults = config_parser.defaults()
+
+        # A generator to extract only the sections we want.
+        def codeartifact_sections(sections):
+            for section in sections:
+                if not self.SECTION_RE.match(section):
+                    # Not a relevant section.
+                    continue
+
+                # Find any key=value pairs in the section name.
+                matches = [m for m in self.QUALIFIER_RE.finditer(section)]
+
+                # Group those matches into pairs by extracting the pairs.
+                pairs = [p.group("key", "value") for p in matches]
+
+                # Build a qualifier from the key/value pairs.
+                key = Qualifier(**{k: v for k, v in pairs})
+
+                # Now extract this section's configuration.
+                value = config_parser[section]
+
+                yield key, value
+
+        # Collect only the sections we actually care about.
+        sections = codeartifact_sections(config_parser.sections())
+
+        # Expand the generator into a dictionary.
+        self.config = dict(sections)
+
+    def lookup(self, domain=None, account=None, region=None, name=None):
+        key = Qualifier(domain, account, region, name)
+
+        # Return the defaults if we didn't have anything to look up.
+        if not self.config.keys() or key == Qualifier():
+            # If defaults were not provided, return None.
+            return self.defaults
+
+        # Rank candidate keys based on a 0-4 scale.
+        def score(candidate):
+            return sum(
+                [
+                    key.domain == candidate.domain,
+                    key.account == candidate.account,
+                    key.region == candidate.region,
+                    key.name == candidate.name,
+                ]
+            )
+
+        # Find the key with the highest score.
+        found_key = max(self.config.keys(), key=score)
+
+        # Return the most specific match.
+        return self.config.get(found_key)
 
 
 class CodeArtifactBackend(backend.KeyringBackend):
     REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
 
     priority = 9.9
+
+    def __init__(self, config_file=None):
+        super().__init__()
+
+        if not config_file:
+            config_file = config_root() / "keyringrc.cfg"
+
+        self.config = CodeArtifactKeyringConfig(config_file)
 
     def get_credential(self, service, username):
         authorization_token = self.get_password(service, username)
@@ -73,20 +140,28 @@ class CodeArtifactBackend(backend.KeyringBackend):
         # Extract the domain, account and region for this repository.
         domain, account, region = match.group(1, 2, 3)
 
-        # Split the path into its repository type and name.
-        repository_type, repository_name = url.path.strip("/").split("/", 1)
+        # Split the path into its constituent parts.
+        parts = PurePath("/", url.path).parts
+
+        if len(parts) < 3:
+            logging.warning(f"Invalid CodeArtifact PyPi URL path: {service}")
+            return
+
+        # Use the second and third parts as repository type and name.
+        _, repository_type, repository_name = parts
 
         # Only continue if this was a PyPi repository.
         if repository_type != "pypi":
-            logging.warning(f"Not an AWS CodeArtifact PyPi repository: {service}")
+            logging.warning(f"Not an CodeArtifact PyPi repository: {service}")
             return
 
-        # Figure out our local timezone from the current time.
-        tzinfo = datetime.now().astimezone().tzinfo
-        now = datetime.now(tz=tzinfo)
-
         # Load our configuration file.
-        config = _load_config()
+        config = self.config.lookup(
+            domain=domain,
+            account=account,
+            region=region,
+            name=repository_name,
+        )
 
         # Create session with any supplied configuration.
         session = boto3.Session(
@@ -106,6 +181,10 @@ class CodeArtifactBackend(backend.KeyringBackend):
         response = client.get_authorization_token(
             domain=domain, domainOwner=account, durationSeconds=token_duration
         )
+
+        # Figure out our local timezone from the current time.
+        tzinfo = datetime.now().astimezone().tzinfo
+        now = datetime.now(tz=tzinfo)
 
         # Give up if the token has already expired.
         if response.get("expiration", now) <= now:

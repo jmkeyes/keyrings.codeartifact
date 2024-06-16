@@ -1,24 +1,32 @@
-# Keyring backend tests.
+# test_backend.py -- backend tests
 
 import pytest
 
-import boto3
-import botocore
-
 import keyring
-import keyrings.codeartifact
 
-from datetime import datetime
+from io import StringIO
+from urllib.parse import urlunparse
+from botocore.client import BaseClient
+from datetime import datetime, timedelta
+from keyrings.codeartifact import CodeArtifactBackend
 
 
 @pytest.fixture
 def backend():
-    backend = keyrings.codeartifact.CodeArtifactBackend()
+    # Find the system-wide keyring.
     original = keyring.get_keyring()
+
+    # Use our keyring backend with an empty configuration.
+    backend = CodeArtifactBackend(config_file=StringIO())
 
     keyring.set_keyring(backend)
     yield backend
     keyring.set_keyring(original)
+
+
+def codeartifact_pypi_url(domain, owner, region, name):
+    netloc = f"{domain}-{owner}.d.codeartifact.{region}.amazonaws.com"
+    return urlunparse(("https", netloc, f"/pypi/{name}", "", "", ""))
 
 
 def test_set_password_raises(backend):
@@ -34,17 +42,14 @@ def test_delete_password_raises(backend):
 @pytest.mark.parametrize(
     "service",
     [
+        "https://example.com/",
         "https://unknown.amazonaws.com/",
-        "https://DOMAIN-ACCOUNT.d.codeartifact.REGION.amazonaws.com/",
-        "https://domain-000000000000.d.codeartifact.region.amazonaws.com/maven/repository",
+        codeartifact_pypi_url("domain", "000000000000", "region", "/"),
+        codeartifact_pypi_url("domain", "owner", "region", "/maven/repo"),
     ],
 )
-def test_get_credential_invalid_host(backend, service):
-    assert keyring.get_credential(service, None) == None
-
-
-def test_get_credential_unsupported_host(backend):
-    assert keyring.get_credential("https://example.com/", None) == None
+def test_get_credential_unsupported_host(backend, service):
+    assert not keyring.get_credential(service, None)
 
 
 def test_get_credential_supported_host(backend, monkeypatch):
@@ -58,19 +63,19 @@ def test_get_credential_supported_host(backend, monkeypatch):
         assert args[1]["durationSeconds"] == 3600
 
         tzinfo = datetime.now().astimezone().tzinfo
-        expiration = datetime.now(tz=tzinfo)
+        current_time = datetime.now(tz=tzinfo)
+
+        # Compute the expiration based on the current timestamp.
+        expiration = timedelta(seconds=args[1]["durationSeconds"])
 
         return {
             "authorizationToken": "TOKEN",
-            "expiration": expiration,
+            "expiration": current_time + expiration,
         }
 
-    monkeypatch.setattr(botocore.client.BaseClient, "_make_api_call", _make_api_call)
-
-    credentials = keyring.get_credential(
-        "https://domain-000000000000.d.codeartifact.region.amazonaws.com/pypi/repository",
-        None,
-    )
+    monkeypatch.setattr(BaseClient, "_make_api_call", _make_api_call)
+    url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
+    credentials = backend.get_credential(url, None)
 
     assert credentials.username == "aws"
     assert credentials.password == "TOKEN"

@@ -27,7 +27,7 @@ Config
 ------
 This backend provides a number of configuration options to modify the behaviour of the AWS client.
 
-These configuration options can be specified within a `[codeartifact]` section of the `keyringrc.cfg`.
+The configuration options can be specified within `[codeartifact]` sections of the `keyringrc.cfg`.
 
 Run `keyring diagnose` to find its as the location; it varies between different platforms.
 
@@ -40,7 +40,9 @@ Available options:
 
 For more explanation of these options see the [AWS CLI documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html).
 
-An example `keyringrc.cfg` section:
+### Single Section Configuration
+
+A trivial example `keyringrc.cfg` section for a single account:
 
 ```ini
 [codeartifact]
@@ -53,4 +55,38 @@ profile_name=default
 # Use the following access keys.
 aws_access_key_id=xxxxxxxxx
 aws_secret_access_key=xxxxxxxxx
+
+```
+
+### Multiple Section Configuration (EXPERIMENTAL)
+
+This backend can use multiple sections to select different configuration values.
+
+Each section may also have any of the following "qualifiers" in any order:
+
+  - `domain`: Matches on the repository domain.
+  - `account`: Matches on the repository account.
+  - `region`: Matches on the repository region.
+  - `name`: Matches on the repository name.
+
+When looking up a CodeArtifact URL, each matching qualifier ranks that section higher.
+
+The section with highest score (ie: the most specific match) will be selected for that URL.
+
+When configured in this manner, the `codeartifact` section will specify default values.
+
+An example of a more advanced configuration for using multiple sections:
+
+```ini
+# These are the defaults for other sections.
+[codeartifact]
+token_duration=1800
+
+# Use for any repositories in account 000000000000.
+[codeartifact account="000000000000"]
+profile_name=special_profile
+
+# Use for account 999999999999 with a repository named "staging".
+[codeartifact account="999999999999" name="staging"]
+profile_name=staging_profile
 ```
