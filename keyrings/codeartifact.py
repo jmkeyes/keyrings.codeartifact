@@ -4,7 +4,6 @@ import re
 import boto3
 import logging
 
-from pathlib import PurePath
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -105,7 +104,8 @@ class CodeArtifactKeyringConfig:
 
 
 class CodeArtifactBackend(backend.KeyringBackend):
-    REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
+    HOST_REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
+    PATH_REGEX = r"^/pypi/([^/])+/simple/?$"
 
     priority = 9.9
 
@@ -130,30 +130,23 @@ class CodeArtifactBackend(backend.KeyringBackend):
             return
 
         # Split the hostname into its components.
-        match = re.fullmatch(self.REGEX, url.hostname)
+        host_match = re.fullmatch(self.HOST_REGEX, url.hostname)
 
         # If it didn't match the regex, it doesn't apply to us.
-        if not match:
+        if not host_match:
             logging.warning("Not an AWS CodeArtifact repository URL!")
             return
 
         # Extract the domain, account and region for this repository.
-        domain, account, region = match.group(1, 2, 3)
+        domain, account, region = host_match.group(1, 2, 3)
 
-        # Split the path into its constituent parts.
-        parts = PurePath("/", url.path).parts
-
-        if len(parts) < 3:
-            logging.warning(f"Invalid CodeArtifact PyPi URL path: {service}")
+        # Validate path and extract repo name
+        path_match = re.fullmatch(self.PATH_REGEX, url.path)
+        if not path_match:
+            logging.warning(f"Invalid CodeArtifact PyPI path: {url.path}")
             return
 
-        # Use the second and third parts as repository type and name.
-        _, repository_type, repository_name = parts
-
-        # Only continue if this was a PyPi repository.
-        if repository_type != "pypi":
-            logging.warning(f"Not an CodeArtifact PyPi repository: {service}")
-            return
+        repository_name = path_match.group(1)
 
         # Load our configuration file.
         config = self.config.lookup(
