@@ -24,9 +24,13 @@ def backend():
     keyring.set_keyring(original)
 
 
-def codeartifact_pypi_url(domain, owner, region, name):
+def codeartifact_url(domain, owner, region, path):
     netloc = f"{domain}-{owner}.d.codeartifact.{region}.amazonaws.com"
-    return urlunparse(("https", netloc, f"/pypi/{name}", "", "", ""))
+    return urlunparse(("https", netloc, path, "", "", ""))
+
+
+def codeartifact_pypi_url(domain, owner, region, name):
+    return codeartifact_url(domain, owner, region, f"/pypi/{name}/simple/")
 
 
 def test_set_password_raises(backend):
@@ -44,11 +48,22 @@ def test_delete_password_raises(backend):
     [
         "https://example.com/",
         "https://unknown.amazonaws.com/",
-        codeartifact_pypi_url("domain", "000000000000", "region", "/"),
-        codeartifact_pypi_url("domain", "owner", "region", "/maven/repo"),
+        codeartifact_url("domain", "owner", "region", "/maven/repo/"),
     ],
 )
 def test_get_credential_unsupported_host(backend, service):
+    assert not keyring.get_credential(service, None)
+
+
+@pytest.mark.parametrize(
+    "service",
+    [
+        codeartifact_url("domain", "000000000000", "region", "/pkg"),
+        codeartifact_url("domain", "000000000000", "region", "/pypi/pkg"),
+        codeartifact_url("domain", "000000000000", "region", "/pkg/simple/"),
+    ],
+)
+def test_get_credential_invalid_path(backend, service):
     assert not keyring.get_credential(service, None)
 
 
