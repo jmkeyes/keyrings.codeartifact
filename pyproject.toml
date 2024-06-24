@@ -30,7 +30,7 @@ Issues = "https://github.com/jmkeyes/keyrings.codeartifact/issues"
 Repository = "https://github.com/jmkeyes/keyrings.codeartifact.git"
 
 [project.entry-points."keyring.backends"]
-"AWS CodeArtifact" = "keyrings.codeartifact"
+AWS-CodeArtifact = "keyrings.codeartifact"
 
 [tool.setuptools.dynamic.dependencies]
 file = ["requirements.txt"]
