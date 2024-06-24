@@ -105,7 +105,7 @@ class CodeArtifactKeyringConfig:
 
 class CodeArtifactBackend(backend.KeyringBackend):
     HOST_REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
-    PATH_REGEX = r"^/pypi/([^/])+/simple/?$"
+    PATH_REGEX = r"^/pypi/([^/]+)/?"
 
     priority = 9.9
 

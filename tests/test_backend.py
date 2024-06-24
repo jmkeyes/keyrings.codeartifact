@@ -30,7 +30,7 @@ def codeartifact_url(domain, owner, region, path):
 
 
 def codeartifact_pypi_url(domain, owner, region, name):
-    return codeartifact_url(domain, owner, region, f"/pypi/{name}/simple/")
+    return codeartifact_url(domain, owner, region, f"/pypi/{name}/")
 
 
 def test_set_password_raises(backend):
@@ -59,7 +59,7 @@ def test_get_credential_unsupported_host(backend, service):
     "service",
     [
         codeartifact_url("domain", "000000000000", "region", "/pkg"),
-        codeartifact_url("domain", "000000000000", "region", "/pypi/pkg"),
+        codeartifact_url("domain", "000000000000", "region", "/pypi/"),
         codeartifact_url("domain", "000000000000", "region", "/pkg/simple/"),
     ],
 )
