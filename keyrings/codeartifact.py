@@ -141,7 +141,7 @@ class CodeArtifactBackend(backend.KeyringBackend):
         domain, account, region = host_match.group(1, 2, 3)
 
         # Validate path and extract repo name
-        path_match = re.fullmatch(self.PATH_REGEX, url.path)
+        path_match = re.match(self.PATH_REGEX, url.path)
         if not path_match:
             logging.warning(f"Invalid CodeArtifact PyPI path: {url.path}")
             return
