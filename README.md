@@ -37,6 +37,7 @@ Available options:
   - `token_duration`: Validity period (in seconds) for retieved authorization tokens.
   - `aws_access_key_id`: Use a specific AWS access key to authenticate with AWS.
   - `aws_secret_access_key`: Use a specific AWS secret access key to authenticate with AWS.
+  - `assume_role`: Role ARN to assume with the current profile name to get the CodeArtifact credentials.
 
 For more explanation of these options see the [AWS CLI documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html).
 
@@ -55,6 +56,9 @@ profile_name=default
 # Use the following access keys.
 aws_access_key_id=xxxxxxxxx
 aws_secret_access_key=xxxxxxxxx
+
+# Assume the following role to obtain the credentials
+assume_role=arn:aws:iam::xxxxxxxxx:role/xxxxxxxxx
 
 ```
 
