@@ -1,21 +1,12 @@
 # test_config.py -- config parsing tests
-
 import pytest
 
 from io import StringIO
-from os.path import dirname, join
+from pathlib import Path
 
 from keyrings.codeartifact import CodeArtifactKeyringConfig
 
-
-@pytest.fixture
-def config_file():
-    working_directory = dirname(__file__)
-
-    def _config_file(path):
-        return join(working_directory, "config", path)
-
-    return _config_file
+CONFIG_DIR = Path(__file__).parent / "config"
 
 
 @pytest.mark.parametrize(
@@ -26,8 +17,8 @@ def config_file():
         ("domain", "00000000", "ca-central-1", "repository"),
     ],
 )
-def test_parse_single_section_only(config_file, parameters):
-    config = CodeArtifactKeyringConfig(config_file("single_section.cfg"))
+def test_parse_single_section_only(parameters):
+    config = CodeArtifactKeyringConfig(CONFIG_DIR / "single_section.cfg")
 
     # A single section has only one configuration.
     values = config.lookup(*parameters)
@@ -89,8 +80,8 @@ def test_bogus_config_returns_empty_configuration(config_data):
         ),
     ],
 )
-def test_multiple_sections_with_defaults(config_file, query, expected):
-    path = config_file("multiple_sections_with_default.cfg")
+def test_multiple_sections_with_defaults(query, expected):
+    path = CONFIG_DIR / "multiple_sections_with_default.cfg"
     config = CodeArtifactKeyringConfig(path)
     values = config.lookup(**query)
 
@@ -115,8 +106,8 @@ def test_multiple_sections_with_defaults(config_file, query, expected):
         ),
     ],
 )
-def test_multiple_sections_no_defaults(config_file, query, expected):
-    path = config_file("multiple_sections_no_default.cfg")
+def test_multiple_sections_no_defaults(query, expected):
+    path = CONFIG_DIR / "multiple_sections_no_default.cfg"
     config = CodeArtifactKeyringConfig(path)
     values = config.lookup(**query)
 

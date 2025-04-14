@@ -106,13 +106,57 @@ class CodeArtifactKeyringConfig:
         return self.config.get(found_key)
 
 
+def default_role_session_name(sts_client):
+    # AssumeRole requires a RoleSessionName. Derive a default from the caller's
+    # STS identity so the assumed session is traceable in AWS CloudTrail.
+    user_id = sts_client.get_caller_identity()["UserId"]
+
+    # RoleSessionName only permits [\w+=,.@-] and is limited to 64 characters.
+    user_id = re.sub(r"[^\w+=,.@-]", "-", user_id)
+    return f"keyrings.codeartifact-{user_id}"[:64]
+
+
 def make_codeartifact_client(options):
+    # Extract any role to assume; these aren't valid session/client arguments.
+    assume_role_arn = options.pop("assume_role_arn", None)
+    assume_role_session_name = options.pop("assume_role_session_name", None)
+
     # Build a session with the provided options.
     session = boto3.session.Session(
         # NOTE: Only the session accepts 'profile_name'.
         profile_name=options.pop("profile_name", None),
         region_name=options.get("region_name"),
     )
+
+    # Optionally assume a role to obtain temporary credentials. The session
+    # above (using the configured profile and/or static keys) is the source
+    # identity used to call AssumeRole.
+    if assume_role_arn:
+        sts_client = session.client(
+            "sts",
+            aws_access_key_id=options.get("aws_access_key_id"),
+            aws_secret_access_key=options.get("aws_secret_access_key"),
+        )
+
+        assumed_role = sts_client.assume_role(
+            RoleArn=assume_role_arn,
+            RoleSessionName=(
+                assume_role_session_name or default_role_session_name(sts_client)
+            ),
+        )
+
+        # Build a new session from the temporary credentials.
+        creds = assumed_role["Credentials"]
+        session = boto3.session.Session(
+            region_name=options.get("region_name"),
+            aws_access_key_id=creds["AccessKeyId"],
+            aws_secret_access_key=creds["SecretAccessKey"],
+            aws_session_token=creds["SessionToken"],
+        )
+
+        # The temporary credentials replace any static keys for the client.
+        options.pop("aws_access_key_id", None)
+        options.pop("aws_secret_access_key", None)
 
     # Create a client for this new session.
     return session.client("codeartifact", **options)
@@ -211,6 +255,16 @@ class CodeArtifactBackend(backend.KeyringBackend):
                     "aws_secret_access_key": aws_secret_access_key,
                 }
             )
+
+        # Optionally assume a role to obtain the CodeArtifact credentials.
+        assume_role_arn = config.get("assume_role_arn")
+        if assume_role_arn:
+            options.update({"assume_role_arn": assume_role_arn})
+
+            # An optional, explicit role session name for the AssumeRole call.
+            assume_role_session_name = config.get("assume_role_session_name")
+            if assume_role_session_name:
+                options.update({"assume_role_session_name": assume_role_session_name})
 
         # Generate a CodeArtifact client using the callback.
         client = self.make_client(options)
