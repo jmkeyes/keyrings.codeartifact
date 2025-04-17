@@ -105,7 +105,9 @@ def test_get_credential_supported_host(backend, monkeypatch):
     assert credentials.password == "TOKEN"
 
 
-@pytest.mark.parametrize("backend", [{"config_file": "single_with_role.cfg"}], indirect=True)
+@pytest.mark.parametrize(
+    "backend", [{"config_file": "single_with_role.cfg"}], indirect=True
+)
 def test_get_credential_for_assumed_role(backend, monkeypatch):
     assumed_role = False
 
@@ -117,14 +119,14 @@ def test_get_credential_for_assumed_role(backend, monkeypatch):
 
             # We should only ever supply these parameters.
             assert args[1]["RoleArn"] == "arn:aws:iam::000000000000:role/some-role"
-            assert args[1]["RoleSessionName"] == "KeyRingsCodeArtifact"
+            assert args[1]["RoleSessionName"] == "SomeSessionName"
             assumed_role = True
             return {
-               "Credentials": {
+                "Credentials": {
                     "AccessKeyId": "",
                     "SecretAccessKey": "",
                     "SessionToken": "",
-               }
+                }
             }
         else:
             return check_codeartifact_api_call(client, *args, **kwargs)
@@ -133,5 +135,6 @@ def test_get_credential_for_assumed_role(backend, monkeypatch):
     url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
     credentials = backend.get_credential(url, None)
 
+    assert assumed_role
     assert credentials.username == "aws"
     assert credentials.password == "TOKEN"

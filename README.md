@@ -38,6 +38,8 @@ Available options:
   - `aws_access_key_id`: Use a specific AWS access key to authenticate with AWS.
   - `aws_secret_access_key`: Use a specific AWS secret access key to authenticate with AWS.
   - `assume_role`: Role ARN to assume with the current profile name to get the CodeArtifact credentials.
+  - `assume_role_session_name`: Name to attache to attach for the role session. If not specified, a name will be
+    selected by AWS SDK. 
 
 For more explanation of these options see the [AWS CLI documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html).
 

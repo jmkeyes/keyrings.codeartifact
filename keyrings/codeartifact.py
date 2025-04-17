@@ -190,6 +190,8 @@ class CodeArtifactBackend(backend.KeyringBackend):
 
     @staticmethod
     def get_boto_session(*, region, config):
+        should_assume_role = config.get("assume_role")
+
         # Create session with any supplied configuration.
         session = boto3.Session(
             region_name=region,
@@ -198,17 +200,15 @@ class CodeArtifactBackend(backend.KeyringBackend):
             aws_secret_access_key=config.get("aws_secret_access_key"),
         )
 
-        if "assume_role" in config:
-            sts_client = session.client("sts")
-            assumed_role_object = sts_client.assume_role(
+        if should_assume_role is not None:
+            assumed_role = session.client("sts").assume_role(
                 RoleArn=config["assume_role"],
-                RoleSessionName="KeyRingsCodeArtifact",
+                RoleSessionName=config.get("assume_role_session_name"),
             )
-            credentials = assumed_role_object["Credentials"]
             return boto3.Session(
-                aws_access_key_id=credentials["AccessKeyId"],
-                aws_secret_access_key=credentials["SecretAccessKey"],
-                aws_session_token=credentials["SessionToken"],
+                aws_access_key_id=assumed_role["Credentials"]["AccessKeyId"],
+                aws_secret_access_key=assumed_role["Credentials"]["SecretAccessKey"],
+                aws_session_token=assumed_role["Credentials"]["SessionToken"],
             )
 
         return session
