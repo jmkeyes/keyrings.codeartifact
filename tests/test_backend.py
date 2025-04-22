@@ -8,11 +8,21 @@ from io import StringIO
 from urllib.parse import urlunparse
 from botocore.client import BaseClient
 from datetime import datetime, timedelta
-from keyrings.codeartifact import CodeArtifactBackend
+from keyrings.codeartifact import CodeArtifactBackend, CodeArtifactKeyringConfig
 
 
 @pytest.fixture
-def backend():
+def mocked_keyring_config(mocker):
+    mock_config_instance = mocker.create_autospec(
+        CodeArtifactKeyringConfig, spec_set=True
+    )
+    mock_config = mocker.patch("keyrings.codeartifact.CodeArtifactKeyringConfig")
+    mock_config.return_value = mock_config_instance
+    return mock_config_instance
+
+
+@pytest.fixture
+def backend(mocked_keyring_config):
     # Find the system-wide keyring.
     original = keyring.get_keyring()
 
@@ -31,6 +41,55 @@ def codeartifact_url(domain, owner, region, path):
 
 def codeartifact_pypi_url(domain, owner, region, name):
     return codeartifact_url(domain, owner, region, f"/pypi/{name}/")
+
+
+def make_check_codeartifact_api_call(*, config, domain, domain_owner):
+    assumed_role = False
+    assume_role = config.get("assume_role")
+    assume_session_name = config.get("assume_session_name")
+    should_assume_role = assume_role is not None
+
+    def _make_api_call(client, *args, **kwargs):
+        nonlocal assumed_role
+        if should_assume_role and not assumed_role:
+            # We should only ever call GetAuthorizationToken
+            assert args[0] == "AssumeRole"
+
+            # We should only ever supply these parameters.
+            assert args[1]["RoleArn"] == assume_role
+            if assume_session_name is not None:
+                assert args[1]["RoleSessionName"] == assume_session_name
+            assumed_role = True
+            return {
+                "Credentials": {
+                    "AccessKeyId": "",
+                    "SecretAccessKey": "",
+                    "SessionToken": "",
+                }
+            }
+        else:
+            assert assumed_role == should_assume_role
+
+            # We should only ever call GetAuthorizationToken
+            assert args[0] == "GetAuthorizationToken"
+
+            # We should only ever supply these parameters.
+            assert args[1]["domain"] == domain
+            assert args[1]["domainOwner"] == domain_owner
+            assert args[1]["durationSeconds"] == 3600
+
+            tzinfo = datetime.now().astimezone().tzinfo
+            current_time = datetime.now(tz=tzinfo)
+
+            # Compute the expiration based on the current timestamp.
+            expiration = timedelta(seconds=args[1]["durationSeconds"])
+
+            return {
+                "authorizationToken": "TOKEN",
+                "expiration": current_time + expiration,
+            }
+
+    return _make_api_call
 
 
 def test_set_password_raises(backend):
@@ -67,29 +126,34 @@ def test_get_credential_invalid_path(backend, service):
     assert not keyring.get_credential(service, None)
 
 
-def test_get_credential_supported_host(backend, monkeypatch):
-    def _make_api_call(client, *args, **kwargs):
-        # We should only ever call GetAuthorizationToken
-        assert args[0] == "GetAuthorizationToken"
+@pytest.mark.parametrize(
+    ["config"],
+    [
+        ({},),
+        (
+            {
+                "assume_role": "arn:aws:iam::000000000000:role/some-role",
+                "assume_role_session_name": "SomeSessionName",
+            },
+        ),
+    ],
+)
+def test_get_credential_supported_host(
+    backend, config, mocked_keyring_config, monkeypatch
+):
+    domain = "domain"
+    domain_owner = "000000000000"
 
-        # We should only ever supply these parameters.
-        assert args[1]["domain"] == "domain"
-        assert args[1]["domainOwner"] == "000000000000"
-        assert args[1]["durationSeconds"] == 3600
+    monkeypatch.setattr(
+        BaseClient,
+        "_make_api_call",
+        make_check_codeartifact_api_call(
+            config=config, domain=domain, domain_owner=domain_owner
+        ),
+    )
+    mocked_keyring_config.lookup.return_value = config
 
-        tzinfo = datetime.now().astimezone().tzinfo
-        current_time = datetime.now(tz=tzinfo)
-
-        # Compute the expiration based on the current timestamp.
-        expiration = timedelta(seconds=args[1]["durationSeconds"])
-
-        return {
-            "authorizationToken": "TOKEN",
-            "expiration": current_time + expiration,
-        }
-
-    monkeypatch.setattr(BaseClient, "_make_api_call", _make_api_call)
-    url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
+    url = codeartifact_pypi_url(domain, domain_owner, "region", "name")
     credentials = backend.get_credential(url, None)
 
     assert credentials.username == "aws"

@@ -156,13 +156,7 @@ class CodeArtifactBackend(backend.KeyringBackend):
             name=repository_name,
         )
 
-        # Create session with any supplied configuration.
-        session = boto3.Session(
-            region_name=region,
-            profile_name=config.get("profile_name"),
-            aws_access_key_id=config.get("aws_access_key_id"),
-            aws_secret_access_key=config.get("aws_secret_access_key"),
-        )
+        session = self.get_boto_session(region=region, config=config)
 
         # Create a CodeArtifact client for this repository's region.
         client = session.client("codeartifact", region_name=region)
@@ -193,3 +187,30 @@ class CodeArtifactBackend(backend.KeyringBackend):
     def delete_password(self, service, username):
         # Defer deleting a password to the next backend
         raise NotImplementedError()
+
+    @staticmethod
+    def get_boto_session(*, region, config):
+        should_assume_role = config.get("assume_role")
+
+        # Create session with any supplied configuration.
+        session = boto3.Session(
+            region_name=region,
+            profile_name=config.get("profile_name"),
+            aws_access_key_id=config.get("aws_access_key_id"),
+            aws_secret_access_key=config.get("aws_secret_access_key"),
+        )
+
+        if should_assume_role is not None:
+            assumed_role = session.client("sts").assume_role(
+                RoleArn=config["assume_role"],
+                RoleSessionName=config.get(
+                    "assume_role_session_name", "KeyRingsCodeArtifact"
+                ),
+            )
+            return boto3.Session(
+                aws_access_key_id=assumed_role["Credentials"]["AccessKeyId"],
+                aws_secret_access_key=assumed_role["Credentials"]["SecretAccessKey"],
+                aws_session_token=assumed_role["Credentials"]["SessionToken"],
+            )
+
+        return session
