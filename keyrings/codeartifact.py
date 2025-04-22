@@ -201,12 +201,11 @@ class CodeArtifactBackend(backend.KeyringBackend):
         )
 
         if should_assume_role is not None:
-            kwargs = {}
-            if "assume_role_session_name" in config:
-                kwargs["RoleSessionName"] = config["assume_role_session_name"]
             assumed_role = session.client("sts").assume_role(
                 RoleArn=config["assume_role"],
-                **kwargs,
+                RoleSessionName=config.get(
+                    "assume_role_session_name", "KeyRingsCodeArtifact"
+                ),
             )
             return boto3.Session(
                 aws_access_key_id=assumed_role["Credentials"]["AccessKeyId"],
