@@ -2,26 +2,27 @@
 
 import pytest
 
+import os
+import boto3
+import botocore.stub
+
 import keyring
 
 from io import StringIO
+from pathlib import Path
 from urllib.parse import urlunparse
-from botocore.client import BaseClient
 from datetime import datetime, timedelta
-from keyrings.codeartifact import CodeArtifactBackend
+
+from keyrings.codeartifact import CodeArtifactBackend, CodeArtifactKeyringConfig
+
+REGION_NAME = "ca-central-1"
+CONFIG_DIR = Path(__file__).parent / "config"
 
 
-@pytest.fixture
-def backend():
-    # Find the system-wide keyring.
-    original = keyring.get_keyring()
-
-    # Use our keyring backend with an empty configuration.
-    backend = CodeArtifactBackend(config_file=StringIO())
-
-    keyring.set_keyring(backend)
-    yield backend
-    keyring.set_keyring(original)
+def current_time():
+    # Compute time zone information to calculate offset.
+    tzinfo = datetime.now().astimezone().tzinfo
+    return datetime.now(tz=tzinfo)
 
 
 def codeartifact_url(domain, owner, region, path):
@@ -33,12 +34,55 @@ def codeartifact_pypi_url(domain, owner, region, name):
     return codeartifact_url(domain, owner, region, f"/pypi/{name}/")
 
 
-def test_set_password_raises(backend):
+class StubbingSession:
+    class Client:
+        def __init__(self, service, **kwargs):
+            self.client = boto3.client(service, **kwargs)
+            self.stub = botocore.stub.Stubber(self.client)
+
+        def stub():
+            return self.stub
+
+        def __getattr__(self, attr):
+            delegate = getattr(self.client, attr)
+
+            def wrapper(*args, **kwargs):
+                with self.stub as stub:
+                    return delegate(*args, **kwargs)
+
+            return delegate
+
+    def __init__(self, **kwargs):
+        self.default_kwargs = kwargs
+        self.clients = {}
+
+    def client(self, service, **client_kwargs):
+        kwargs = {}
+        kwargs.update(self.default_kwargs)
+        kwargs.update(client_kwargs)
+
+        if not self.clients.get(service):
+            self.clients[service] = StubbingSession.Client(service, **kwargs)
+
+        return self.clients[service]
+
+
+@pytest.fixture
+def default_backend():
+    backend = CodeArtifactBackend()
+    original = keyring.get_keyring()
+
+    keyring.set_keyring(backend)
+    yield backend
+    keyring.set_keyring(original)
+
+
+def test_set_password_raises(default_backend):
     with pytest.raises(NotImplementedError):
         keyring.set_password("service", "username", "password")
 
 
-def test_delete_password_raises(backend):
+def test_delete_password_raises(default_backend):
     with pytest.raises(NotImplementedError):
         keyring.delete_password("service", "username")
 
@@ -51,7 +95,7 @@ def test_delete_password_raises(backend):
         codeartifact_url("domain", "owner", "region", "/maven/repo/"),
     ],
 )
-def test_get_credential_unsupported_host(backend, service):
+def test_get_credential_unsupported_host(default_backend, service):
     assert not keyring.get_credential(service, None)
 
 
@@ -63,34 +107,37 @@ def test_get_credential_unsupported_host(backend, service):
         codeartifact_url("domain", "000000000000", "region", "/pkg/simple/"),
     ],
 )
-def test_get_credential_invalid_path(backend, service):
+def test_get_credential_invalid_path(default_backend, service):
     assert not keyring.get_credential(service, None)
 
 
-def test_get_credential_supported_host(backend, monkeypatch):
-    def _make_api_call(client, *args, **kwargs):
-        # We should only ever call GetAuthorizationToken
-        assert args[0] == "GetAuthorizationToken"
+def test_get_credential_supported_host():
+    session = StubbingSession(region_name=REGION_NAME)
+    client = session.client("codeartifact", region_name=REGION_NAME)
 
-        # We should only ever supply these parameters.
-        assert args[1]["domain"] == "domain"
-        assert args[1]["domainOwner"] == "000000000000"
-        assert args[1]["durationSeconds"] == 3600
+    parameters = {
+        "domain": "domain",
+        "domainOwner": "000000000000",
+        "durationSeconds": 3600,
+    }
 
-        tzinfo = datetime.now().astimezone().tzinfo
-        current_time = datetime.now(tz=tzinfo)
-
+    # The response we expect from the API.
+    response = {
+        "authorizationToken": "TOKEN",
         # Compute the expiration based on the current timestamp.
-        expiration = timedelta(seconds=args[1]["durationSeconds"])
+        "expiration": current_time() + timedelta(seconds=3600),
+    }
 
-        return {
-            "authorizationToken": "TOKEN",
-            "expiration": current_time + expiration,
-        }
+    client.stub.add_response("get_authorization_token", response, parameters)
+    client.stub.activate()
 
-    monkeypatch.setattr(BaseClient, "_make_api_call", _make_api_call)
+    config = CodeArtifactKeyringConfig(config_file=StringIO())
+    backend = CodeArtifactBackend(config=config, session=session)
+
     url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
     credentials = backend.get_credential(url, None)
 
     assert credentials.username == "aws"
     assert credentials.password == "TOKEN"
+
+    client.stub.assert_no_pending_responses()

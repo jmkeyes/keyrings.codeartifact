@@ -1,8 +1,10 @@
 # codeartifact.py -- keyring backend
 
 import re
-import boto3
 import logging
+
+import boto3
+import boto3.session
 
 from datetime import datetime
 from urllib.parse import urlparse
@@ -45,7 +47,8 @@ class CodeArtifactKeyringConfig:
         config_parser.default_section = self.DEFAULT_SECTION
 
         # Load the configuration file.
-        config_parser.read(config_file)
+        if not config_parser.read(config_file):
+            logging.warning(f"{config_file} does not exist!")
 
         # Collect the defaults before we go further.
         self.defaults = config_parser.defaults()
@@ -109,13 +112,22 @@ class CodeArtifactBackend(backend.KeyringBackend):
 
     priority = 9.9
 
-    def __init__(self, config_file=None):
+    def __init__(self, /, config=None, session=None):
         super().__init__()
 
-        if not config_file:
+        if config:
+            # Use the provided configuration.
+            self.config = config
+        else:
+            # Use the global configuration file.
             config_file = config_root() / "keyringrc.cfg"
+            self.config = CodeArtifactKeyringConfig(config_file)
 
-        self.config = CodeArtifactKeyringConfig(config_file)
+        # Use the boto3 session implementation by default.
+        if session:
+            self.session = session
+        else:
+            self.session = boto3.session.Session()
 
     def get_credential(self, service, username):
         authorization_token = self.get_password(service, username)
@@ -156,16 +168,8 @@ class CodeArtifactBackend(backend.KeyringBackend):
             name=repository_name,
         )
 
-        # Create session with any supplied configuration.
-        session = boto3.Session(
-            region_name=region,
-            profile_name=config.get("profile_name"),
-            aws_access_key_id=config.get("aws_access_key_id"),
-            aws_secret_access_key=config.get("aws_secret_access_key"),
-        )
-
         # Create a CodeArtifact client for this repository's region.
-        client = session.client("codeartifact", region_name=region)
+        client = self._get_codeartifact_client(config, region)
 
         # Authorization tokens should be good for an hour by default.
         token_duration = int(config.get("token_duration", 3600))
@@ -193,3 +197,24 @@ class CodeArtifactBackend(backend.KeyringBackend):
     def delete_password(self, service, username):
         # Defer deleting a password to the next backend
         raise NotImplementedError()
+
+    def _get_codeartifact_client(self, /, config, region):
+        # CodeArtifact requires a region.
+        kwargs = {"region_name": region}
+
+        # If a profile name was provided, use it.
+        profile_name = config.get("profile_name")
+        if profile_name:
+            kwargs.update({"profile_name": profile_name})
+
+        # If static access/secret keys were provided, use them.
+        aws_access_key_id = config.get("aws_access_key_id")
+        aws_secret_access_key = config.get("aws_secret_access_key")
+        if aws_access_key_id and aws_secret_access_key:
+            kwargs.update({
+                "aws_access_key_id": aws_access_key_id,
+                "aws_secret_access_key": aws_secret_access_key,
+            })
+
+        # Build a CodeArtifact client from the session.
+        return self.session.client("codeartifact", **kwargs)
