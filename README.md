@@ -55,7 +55,6 @@ profile_name=default
 # Use the following access keys.
 aws_access_key_id=xxxxxxxxx
 aws_secret_access_key=xxxxxxxxx
-
 ```
 
 ### Multiple Section Configuration (EXPERIMENTAL)
