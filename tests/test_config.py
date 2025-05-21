@@ -34,8 +34,8 @@ def test_parse_single_section_only(config_file, parameters):
 
     assert values.get("token_duration") == "1800"
     assert values.get("profile_name") == "default_profile"
-    assert values.get("aws_access_key_id") == "default_access_key"
-    assert values.get("aws_secret_key_id") == "default_secret_key"
+    assert values.get("aws_access_key_id") == "default_access_key_id"
+    assert values.get("aws_secret_access_key") == "default_access_secret_key"
 
 
 @pytest.mark.parametrize(
@@ -68,7 +68,7 @@ def test_bogus_config_returns_empty_configuration(config_data):
             {
                 "token_duration": "600",
                 "aws_access_key_id": "not_access_key",
-                "aws_secret_key_id": "not_secret_key",
+                "aws_secret_access_key": "not_secret_key",
             },
         ),
         (
