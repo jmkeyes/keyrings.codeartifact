@@ -1,10 +1,8 @@
 # codeartifact.py -- keyring backend
 
+import os
 import re
 import logging
-
-import boto3
-import boto3.session
 
 from datetime import datetime
 from urllib.parse import urlparse
@@ -14,6 +12,12 @@ from keyring.util.platform_ import config_root
 
 from typing import NamedTuple
 from configparser import RawConfigParser
+
+from .clients.boto3 import Boto3CAClient
+from .clients.tsh import TeleportCAClient
+
+
+logging.getLogger("keyrings.codeartifact")
 
 
 class Qualifier(NamedTuple):
@@ -80,7 +84,13 @@ class CodeArtifactKeyringConfig:
         # Expand the generator into a dictionary.
         self.config = dict(sections)
 
-    def lookup(self, domain=None, account=None, region=None, name=None):
+    def lookup(
+        self,
+        domain=None,
+        account=None,
+        region=None,
+        name=None,
+    ):
         key = Qualifier(domain, account, region, name)
 
         # Return the defaults if we didn't have anything to look up.
@@ -106,7 +116,7 @@ class CodeArtifactKeyringConfig:
         return self.config.get(found_key)
 
 
-class CodeArtifactBackend(backend.KeyringBackend):
+class key(backend.KeyringBackend):
     HOST_REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
     PATH_REGEX = r"^/pypi/([^/]+)/?"
 
@@ -123,11 +133,7 @@ class CodeArtifactBackend(backend.KeyringBackend):
             config_file = config_root() / "keyringrc.cfg"
             self.config = CodeArtifactKeyringConfig(config_file)
 
-        # Use the boto3 session implementation by default.
-        if session:
-            self.session = session
-        else:
-            self.session = boto3.session.Session()
+        self.session = session
 
     def get_credential(self, service, username):
         authorization_token = self.get_password(service, username)
@@ -162,33 +168,31 @@ class CodeArtifactBackend(backend.KeyringBackend):
 
         # Load our configuration file.
         config = self.config.lookup(
-            domain=domain,
-            account=account,
-            region=region,
-            name=repository_name,
+            domain=domain, account=account, region=region, name=repository_name
         )
-
-        # Create a CodeArtifact client for this repository's region.
-        client = self._get_codeartifact_client(config, region)
 
         # Authorization tokens should be good for an hour by default.
         token_duration = int(config.get("token_duration", 3600))
+        config["token_duration"] = token_duration
+        config["domain"] = domain
+        config["account"] = account
+        config["region"] = region
+
+        if self.session:
+            # If a session was provided, use it.
+            config["session"] = self.session
+
+        # allow boto3 client override from environment or config
+        if (
+            config.get("default_client") == "tsh"
+            or os.getenv("CA_KEYRING_CLIENT") == "tsh"
+        ):
+            client = TeleportCAClient(**config)
+        else:
+            client = Boto3CAClient(**config)
 
         # Ask for an authorization token using the current AWS credentials.
-        response = client.get_authorization_token(
-            domain=domain, domainOwner=account, durationSeconds=token_duration
-        )
-
-        # Figure out our local timezone from the current time.
-        tzinfo = datetime.now().astimezone().tzinfo
-        now = datetime.now(tz=tzinfo)
-
-        # Give up if the token has already expired.
-        if response.get("expiration", now) <= now:
-            logging.warning("Received an expired CodeArtifact token!")
-            return
-
-        return response.get("authorizationToken")
+        return client.get_authorization_token()
 
     def set_password(self, service, username, password):
         # Defer setting a password to the next backend
@@ -197,24 +201,3 @@ class CodeArtifactBackend(backend.KeyringBackend):
     def delete_password(self, service, username):
         # Defer deleting a password to the next backend
         raise NotImplementedError()
-
-    def _get_codeartifact_client(self, /, config, region):
-        # CodeArtifact requires a region.
-        kwargs = {"region_name": region}
-
-        # If a profile name was provided, use it.
-        profile_name = config.get("profile_name")
-        if profile_name:
-            kwargs.update({"profile_name": profile_name})
-
-        # If static access/secret keys were provided, use them.
-        aws_access_key_id = config.get("aws_access_key_id")
-        aws_secret_access_key = config.get("aws_secret_access_key")
-        if aws_access_key_id and aws_secret_access_key:
-            kwargs.update({
-                "aws_access_key_id": aws_access_key_id,
-                "aws_secret_access_key": aws_secret_access_key,
-            })
-
-        # Build a CodeArtifact client from the session.
-        return self.session.client("codeartifact", **kwargs)
