@@ -26,8 +26,8 @@ def config_file():
         ("domain", "00000000", "ca-central-1", "repository"),
     ],
 )
-def test_parse_single_section_only(config_file, parameters):
-    config = CodeArtifactKeyringConfig(config_file("single_section.cfg"))
+def test_parse_single_section_only_boto3(config_file, parameters):
+    config = CodeArtifactKeyringConfig(config_file("single_section_boto3.cfg"))
 
     # A single section has only one configuration.
     values = config.lookup(*parameters)
@@ -36,6 +36,28 @@ def test_parse_single_section_only(config_file, parameters):
     assert values.get("profile_name") == "default_profile"
     assert values.get("aws_access_key_id") == "default_access_key_id"
     assert values.get("aws_secret_access_key") == "default_access_secret_key"
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        (None, None, None, None),
+        ("domain", "owner", "region", "name"),
+        ("domain", "00000000", "ca-central-1", "repository"),
+    ],
+)
+def test_parse_single_section_only_tsh(config_file, parameters):
+    config = CodeArtifactKeyringConfig(config_file("single_section_tsh.cfg"))
+
+    # A single section has only one configuration.
+    values = config.lookup(*parameters)
+
+    assert values.get("token_duration") == "1800"
+    assert values.get("account") == "000000000000"
+    assert values.get("default_client") == "tsh"
+    assert values.get("teleport_proxy") == "foo.teleport.sh"
+    assert values.get("tsh_app_name") == "test_app_name"
+    assert values.get("tsh_aws_role_name") == "test_aws_role_name"
 
 
 @pytest.mark.parametrize(
@@ -86,6 +108,16 @@ def test_bogus_config_returns_empty_configuration(config_data):
         (
             {"account": "000000000000", "name": "production"},
             {"token_duration": "1800", "profile_name": "production_profile"},
+        ),
+        (
+            {"account": "000000000000", "name": "teleport"},
+            {
+                "token_duration": "1800",
+                "default_client": "tsh",
+                "teleport_proxy": "foo.teleport.sh",
+                "tsh_app_name": "bar",
+                "tsh_aws_role_name": "baz",
+            },
         ),
     ],
 )

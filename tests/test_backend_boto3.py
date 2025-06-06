@@ -111,7 +111,7 @@ def test_get_credential_invalid_path(default_backend, service):
     assert not keyring.get_credential(service, None)
 
 
-def test_get_credential_supported_host():
+def test_get_credential_supported_host_boto3():
     session = StubbingSession(region_name=REGION_NAME)
     client = session.client("codeartifact", region_name=REGION_NAME)
 

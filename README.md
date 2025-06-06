@@ -34,15 +34,15 @@ Run `keyring diagnose` to find its as the location; it varies between different 
 Available options:
 
   - `profile_name`: Use a specific AWS profile to authenticate with AWS.
-  - `token_duration`: Validity period (in seconds) for retieved authorization tokens.
+  - `token_duration`: Validity period (in seconds) for retrieved authorization tokens.
   - `aws_access_key_id`: Use a specific AWS access key to authenticate with AWS.
   - `aws_secret_access_key`: Use a specific AWS secret access key to authenticate with AWS.
 
 For more explanation of these options see the [AWS CLI documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html).
 
-### Single Section Configuration
+### Single Section Configuration - boto3
 
-A trivial example `keyringrc.cfg` section for a single account:
+A trivial example `keyringrc.cfg` section for a single account that uses the `boto3` client:
 
 ```ini
 [codeartifact]
@@ -55,6 +55,30 @@ profile_name=default
 # Use the following access keys.
 aws_access_key_id=xxxxxxxxx
 aws_secret_access_key=xxxxxxxxx
+```
+
+### Single Section Configuration - teleport
+
+A trivial example `keyringrc.cfg` section for a single account that uses the `tsh` client.
+Requires the [Teleport](https://goteleport.com/) client to be installed and configured.
+
+```ini
+[codeartifact]
+# Use the tsh binary to create the ca token.
+# Can be overridden by the CA_KEYRING_CLIENT environment variable.
+default_client = tsh
+
+# Tokens should only be valid for 30 minutes.
+token_duration=1800
+
+# teleport proxy to use for authentication.
+teleport_proxy = foo.teleport.sh
+
+# name of the teleport application to use for authentication.
+tsh_app_name = test_app_name
+
+# name of the teleport role to use for authentication.
+tsh_aws_role_name = test_aws_role_name
 ```
 
 ### Multiple Section Configuration (EXPERIMENTAL)
