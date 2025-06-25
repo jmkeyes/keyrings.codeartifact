@@ -188,6 +188,19 @@ class CodeArtifactBackend(backend.KeyringBackend):
         if profile_name:
             options.update({"profile_name": profile_name})
 
+        # Provide option to disable SSL/TLS verification.
+        verify = config.get("verify")
+        if verify:
+            if verify.lower() in {"1", "yes", "on", "true"}:
+                # Enable SSL/TLS verification explicitly.
+                options.update({"verify": True})
+            elif verify.lower() in {"0", "no", "off", "false"}:
+                # Disable SSL/TLS verification entirely.
+                options.update({"verify": False})
+            else:
+                # The SSL/TLS certificate to verify against.
+                options.update({"verify": verify.strip('"')})
+
         # If static access/secret keys were provided, use them.
         aws_access_key_id = config.get("aws_access_key_id")
         aws_secret_access_key = config.get("aws_secret_access_key")

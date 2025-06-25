@@ -183,6 +183,26 @@ def test_get_credential_supported_host():
                 "profile_name": "PROFILE-OVERRIDDEN",
             },
         ),
+        # Turning off SSL verification by default.
+        (
+            """
+            [codeartifact]
+            verify = off
+            """,
+            {
+                "verify": False,
+            },
+        ),
+        # Turning on SSL verification using a custom certificate.
+        (
+            """
+            [codeartifact]
+            verify = ./path/to/certificate.pem
+            """,
+            {
+                "verify": "./path/to/certificate.pem",
+            },
+        ),
     ],
 )
 def test_backend_default_options(configuration, assertions):
