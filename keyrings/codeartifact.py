@@ -106,13 +106,21 @@ class CodeArtifactKeyringConfig:
         return self.config.get(found_key)
 
 
+def make_codeartifact_client(options, **kwargs):
+    # Build a session for our client.
+    session = boto3.session.Session()
+
+    # Create a client for this new session.
+    return session.client("codeartifact", **options)
+
+
 class CodeArtifactBackend(backend.KeyringBackend):
     HOST_REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
     PATH_REGEX = r"^/pypi/([^/]+)/?"
 
     priority = 9.9
 
-    def __init__(self, /, config=None, session=None):
+    def __init__(self, /, config=None, make_client=make_codeartifact_client):
         super().__init__()
 
         if config:
@@ -123,11 +131,8 @@ class CodeArtifactBackend(backend.KeyringBackend):
             config_file = config_root() / "keyringrc.cfg"
             self.config = CodeArtifactKeyringConfig(config_file)
 
-        # Use the boto3 session implementation by default.
-        if session:
-            self.session = session
-        else:
-            self.session = boto3.session.Session()
+        # Use our default built-in CodeArtifact client producer.
+        self.make_client = make_client
 
     def get_credential(self, service, username):
         authorization_token = self.get_password(service, username)
@@ -160,7 +165,7 @@ class CodeArtifactBackend(backend.KeyringBackend):
 
         repository_name = path_match.group(1)
 
-        # Load our configuration file.
+        # Lookup configuration options.
         config = self.config.lookup(
             domain=domain,
             account=account,
@@ -168,11 +173,39 @@ class CodeArtifactBackend(backend.KeyringBackend):
             name=repository_name,
         )
 
-        # Create a CodeArtifact client for this repository's region.
-        client = self._get_codeartifact_client(config, region)
+        # Options for the client callback.
+        options = {
+            # Pass in the region name.
+            "region_name": region,
+        }
+
+        # Extract any AWS profile name we should use.
+        profile_name = config.get("profile_name")
+        if profile_name:
+            options.update({"profile_name": profile_name})
+
+        # If static access/secret keys were provided, use them.
+        aws_access_key_id = config.get("aws_access_key_id")
+        aws_secret_access_key = config.get("aws_secret_access_key")
+        if aws_access_key_id and aws_secret_access_key:
+            options.update(
+                {
+                    "aws_access_key_id": aws_access_key_id,
+                    "aws_secret_access_key": aws_secret_access_key,
+                }
+            )
 
         # Authorization tokens should be good for an hour by default.
         token_duration = int(config.get("token_duration", 3600))
+
+        # Generate a CodeArtifact client using the callback.
+        client = self.make_client(
+            options,
+            token_duration=token_duration,
+            repository=repository_name,
+            account=account,
+            domain=domain,
+        )
 
         # Ask for an authorization token using the current AWS credentials.
         response = client.get_authorization_token(
@@ -197,24 +230,3 @@ class CodeArtifactBackend(backend.KeyringBackend):
     def delete_password(self, service, username):
         # Defer deleting a password to the next backend
         raise NotImplementedError()
-
-    def _get_codeartifact_client(self, /, config, region):
-        # CodeArtifact requires a region.
-        kwargs = {"region_name": region}
-
-        # If a profile name was provided, use it.
-        profile_name = config.get("profile_name")
-        if profile_name:
-            kwargs.update({"profile_name": profile_name})
-
-        # If static access/secret keys were provided, use them.
-        aws_access_key_id = config.get("aws_access_key_id")
-        aws_secret_access_key = config.get("aws_secret_access_key")
-        if aws_access_key_id and aws_secret_access_key:
-            kwargs.update({
-                "aws_access_key_id": aws_access_key_id,
-                "aws_secret_access_key": aws_secret_access_key,
-            })
-
-        # Build a CodeArtifact client from the session.
-        return self.session.client("codeartifact", **kwargs)
