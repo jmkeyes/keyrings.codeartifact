@@ -146,7 +146,7 @@ class CodeArtifactBackend(backend.KeyringBackend):
 
         # If it didn't match the regex, it doesn't apply to us.
         if not host_match:
-            logging.warning("Not an AWS CodeArtifact repository URL!")
+            logging.warning(f"Not an AWS CodeArtifact repository URL: {service}")
             return
 
         # Extract the domain, account and region for this repository.
