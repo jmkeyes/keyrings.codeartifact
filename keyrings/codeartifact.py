@@ -107,8 +107,12 @@ class CodeArtifactKeyringConfig:
 
 
 def make_codeartifact_client(options, **kwargs):
-    # Build a session for our client.
-    session = boto3.session.Session()
+    # Build a session with the provided options.
+    session = boto3.session.Session(
+        # NOTE: Only the session accepts 'profile_name'.
+        profile_name=kwargs.pop("profile_name", None),
+        region_name=kwargs.get("region_name"),
+    )
 
     # Create a client for this new session.
     return session.client("codeartifact", **options)
