@@ -93,8 +93,13 @@ def test_get_credential_invalid_path(default_backend, service):
 
 
 def test_get_credential_supported_host():
-    def make_client(options, **kwargs):
-        client = boto3.client("codeartifact", **options)
+    def make_client(options):
+        session = boto3.session.Session(
+            profile_name=options.pop("profile_name", None),
+            region_name=options.get("region_name"),
+        )
+
+        client = session.client("codeartifact", **options)
         stubber = botocore.stub.Stubber(client)
 
         parameters = {
@@ -185,10 +190,10 @@ def test_backend_default_options(configuration, assertions):
         def get_authorization_token(self, *args, **kwargs):
             return {}
 
-    def make_client(options, **kwargs):
+    def make_client(options):
         # Assert that we received specific options.
         for key, value in assertions.items():
-            assert options.get(key) == value
+            assert value == options.get(key)
 
         # Ignore the rest.
         return DummyClient()

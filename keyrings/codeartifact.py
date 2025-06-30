@@ -106,12 +106,12 @@ class CodeArtifactKeyringConfig:
         return self.config.get(found_key)
 
 
-def make_codeartifact_client(options, **kwargs):
+def make_codeartifact_client(options):
     # Build a session with the provided options.
     session = boto3.session.Session(
         # NOTE: Only the session accepts 'profile_name'.
-        profile_name=kwargs.pop("profile_name", None),
-        region_name=kwargs.get("region_name"),
+        profile_name=options.pop("profile_name", None),
+        region_name=options.get("region_name"),
     )
 
     # Create a client for this new session.
@@ -199,17 +199,11 @@ class CodeArtifactBackend(backend.KeyringBackend):
                 }
             )
 
+        # Generate a CodeArtifact client using the callback.
+        client = self.make_client(options)
+
         # Authorization tokens should be good for an hour by default.
         token_duration = int(config.get("token_duration", 3600))
-
-        # Generate a CodeArtifact client using the callback.
-        client = self.make_client(
-            options,
-            token_duration=token_duration,
-            repository=repository_name,
-            account=account,
-            domain=domain,
-        )
 
         # Ask for an authorization token using the current AWS credentials.
         response = client.get_authorization_token(
