@@ -1,12 +1,12 @@
 # .github/workflows/release.yml
 
-name: 📦 Release 'keyrings.codeartifact' package.
+name: 🏗️ Build & release package.
 
 on: push
 
 jobs:
   build:
-    name: 📦 Build package.
+    name: 📦 Build and test package.
     runs-on: ubuntu-latest
 
     steps:
@@ -32,14 +32,14 @@ jobs:
         python3 -m pip install --user build
         python3 -m build
 
-    - name: 💾 Store the built package distributions.
+    - name: 💾 Store the built package artifacts.
       uses: actions/upload-artifact@v4
       with:
-        name: python-package-distributions
+        name: python-package-artifacts
         path: dist/
 
   publish-to-testpypi:
-    name: 🚀 Publish distributions to test PyPI index.
+    name: 🚀 Publish package to test PyPI index.
     runs-on: ubuntu-latest
 
     needs:
@@ -54,25 +54,26 @@ jobs:
       id-token: write
 
     steps:
-    - name: 📥 Download the built package distributions.
+    - name: 📥 Download the built artifacts.
       uses: actions/download-artifact@v4
       with:
-        name: python-package-distributions
+        name: python-package-artifacts
         path: dist/
 
-    - name: 🚀 Publish distributions to TestPyPI.
+    - name: 🚀 Publish package to TestPyPI.
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
         skip-existing: true
 
   publish-to-pypi:
-    name: 🚀 Publish distributions to main PyPI index.
+    name: 🚀 Publish package to main PyPI index.
     if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
     runs-on: ubuntu-latest
 
     needs:
     - build
+    - publish-to-testpypi
 
     environment:
       name: pypi
@@ -83,11 +84,40 @@ jobs:
       id-token: write
 
     steps:
-    - name: 📥 Download the built package distributions.
+    - name: 📥 Download the built artifacts.
       uses: actions/download-artifact@v4
       with:
-        name: python-package-distributions
+        name: python-package-artifacts
         path: dist/
 
     - name: 🚀 Publish package to main PyPI index.
       uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-github-release:
+    name: 🚀 Publish package to GitHub release.
+    if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
+    runs-on: ubuntu-latest
+
+    needs:
+    - build
+
+    permissions:
+      # IMPORTANT: mandatory for github release publishing
+      contents: write
+
+    steps:
+    - name: 📥 Download the built artifacts.
+      uses: actions/download-artifact@v4
+      with:
+        name: python-package-artifacts
+        path: dist/
+
+    - name: 🎁 Publish package to GitHub release.
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG_NAME: ${{ github.ref_name }}
+      run: |
+        gh release create "${TAG_NAME}" --repo="${GITHUB_REPOSITORY}" \
+          --title="${TAG_NAME}" --generate-notes --verify-tag \
+          dist/*
