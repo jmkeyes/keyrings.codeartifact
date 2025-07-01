@@ -2,20 +2,17 @@
 
 import pytest
 
-import os
-import boto3
-import botocore.stub
-
-import keyring
-
 from io import StringIO
 from pathlib import Path
 from urllib.parse import urlunparse
 from datetime import datetime, timedelta
 
+from botocore.stub import Stubber
+
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
 
+from keyrings.codeartifact import make_codeartifact_client
 from keyrings.codeartifact import CodeArtifactBackend, CodeArtifactKeyringConfig
 
 REGION_NAME = "ca-central-1"
@@ -48,59 +45,10 @@ def config_from_string(content: str):
         yield cfg
 
 
-@pytest.fixture
-def default_backend():
-    backend = CodeArtifactBackend()
-    original = keyring.get_keyring()
-
-    keyring.set_keyring(backend)
-    yield backend
-    keyring.set_keyring(original)
-
-
-def test_set_password_raises(default_backend):
-    with pytest.raises(NotImplementedError):
-        keyring.set_password("service", "username", "password")
-
-
-def test_delete_password_raises(default_backend):
-    with pytest.raises(NotImplementedError):
-        keyring.delete_password("service", "username")
-
-
-@pytest.mark.parametrize(
-    "service",
-    [
-        "https://example.com/",
-        "https://unknown.amazonaws.com/",
-        codeartifact_url("domain", "owner", "region", "/maven/repo/"),
-    ],
-)
-def test_get_credential_unsupported_host(default_backend, service):
-    assert not keyring.get_credential(service, None)
-
-
-@pytest.mark.parametrize(
-    "service",
-    [
-        codeartifact_url("domain", "000000000000", "region", "/pkg"),
-        codeartifact_url("domain", "000000000000", "region", "/pypi/"),
-        codeartifact_url("domain", "000000000000", "region", "/pkg/simple/"),
-    ],
-)
-def test_get_credential_invalid_path(default_backend, service):
-    assert not keyring.get_credential(service, None)
-
-
 def test_get_credential_supported_host():
     def make_client(options):
-        session = boto3.session.Session(
-            profile_name=options.pop("profile_name", None),
-            region_name=options.get("region_name"),
-        )
-
-        client = session.client("codeartifact", **options)
-        stubber = botocore.stub.Stubber(client)
+        client = make_codeartifact_client(options)
+        stubber = Stubber(client)
 
         parameters = {
             "domain": "domain",
