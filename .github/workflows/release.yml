@@ -24,7 +24,7 @@ jobs:
 
     - name: 🔬 Execute all unit tests.
       run: |
-        python3 -m pip install .[testing]
+        python3 -m pip install .[test]
         python3 -m pytest
 
     - name: 🛠️ Build package and source distribution.

@@ -89,3 +89,14 @@ profile_name=special_profile
 [codeartifact account="999999999999" name="staging"]
 profile_name=staging_profile
 ```
+
+Development Environment
+-----------------------
+
+Use a virtual environment:
+
+```
+$ python3 -m venv venv
+$ source venv/bin/activate
+$ pip install -e .[dev,test]
+```

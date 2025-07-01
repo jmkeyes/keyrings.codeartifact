@@ -35,8 +35,8 @@ AWS-CodeArtifact = "keyrings.codeartifact"
 file = ["requirements.txt"]
 
 [tool.setuptools.dynamic.optional-dependencies]
-devel = { file = ["requirements-dev.txt"] }
-testing = { file = ["requirements-test.txt"] }
+dev = { file = ["requirements-dev.txt"] }
+test = { file = ["requirements-test.txt"] }
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"  # required for PyPI and TestPyPI
