@@ -1,2 +1,2 @@
-keyring~=25.0
+keyring~=25.6
 boto3~=1.36
