@@ -1,5 +1,6 @@
 # codeartifact.py -- keyring backend
 
+import os
 import re
 import logging
 
@@ -176,6 +177,12 @@ class CodeArtifactBackend(backend.KeyringBackend):
             region=region,
             name=repository_name,
         )
+
+        # Check for token in environment variable
+        token_from_env = os.getenv("CODEARTIFACT_AUTH_TOKEN")
+        if token_from_env:
+            logging.info("Using token from environment variable: CODEARTIFACT_AUTH_TOKEN")
+            return token_from_env
 
         # Options for the client callback.
         options = {
