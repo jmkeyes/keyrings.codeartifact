@@ -145,6 +145,13 @@ class CodeArtifactBackend(backend.KeyringBackend):
             return credentials.SimpleCredential("aws", authorization_token)
 
     def get_password(self, service, username):
+
+        # Check for token in environment variable
+        token_from_env = os.getenv("CODEARTIFACT_AUTH_TOKEN")
+        if token_from_env:
+            logging.info("Using token from environment variable: CODEARTIFACT_AUTH_TOKEN")
+            return token_from_env
+        
         url = urlparse(service)
 
         # Do a quick check to see if this service URL applies to us.
@@ -177,12 +184,6 @@ class CodeArtifactBackend(backend.KeyringBackend):
             region=region,
             name=repository_name,
         )
-
-        # Check for token in environment variable
-        token_from_env = os.getenv("CODEARTIFACT_AUTH_TOKEN")
-        if token_from_env:
-            logging.info("Using token from environment variable: CODEARTIFACT_AUTH_TOKEN")
-            return token_from_env
 
         # Options for the client callback.
         options = {
