@@ -146,8 +146,13 @@ class CodeArtifactBackend(backend.KeyringBackend):
 
     def get_password(self, service, username):
 
-        # Get the environment variable name from config, default to CODEARTIFACT_AUTH_TOKEN
-        env_variable_name = self.config.get("env_variable", "CODEARTIFACT_AUTH_TOKEN")
+        # Get the environment variable name from config defaults (if provided),
+        # otherwise fall back to the standard CODEARTIFACT_AUTH_TOKEN.
+        # Note: self.config is a CodeArtifactKeyringConfig, not a dict.
+        env_variable_name = (
+            getattr(self.config, "defaults", {})
+            .get("env_variable", "CODEARTIFACT_AUTH_TOKEN")
+        )
 
         # Check for token in environment variable
         token_from_env = os.getenv(env_variable_name)
