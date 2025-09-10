@@ -1,5 +1,6 @@
 # codeartifact.py -- keyring backend
 
+import os
 import re
 import logging
 
@@ -144,6 +145,21 @@ class CodeArtifactBackend(backend.KeyringBackend):
             return credentials.SimpleCredential("aws", authorization_token)
 
     def get_password(self, service, username):
+
+        # Get the environment variable name from config defaults (if provided),
+        # otherwise fall back to the standard CODEARTIFACT_AUTH_TOKEN.
+        # Note: self.config is a CodeArtifactKeyringConfig, not a dict.
+        env_variable_name = (
+            getattr(self.config, "defaults", {})
+            .get("env_variable", "CODEARTIFACT_AUTH_TOKEN")
+        )
+
+        # Check for token in environment variable
+        token_from_env = os.getenv(env_variable_name)
+        if token_from_env:
+            logging.info(f"Using token from environment variable: {env_variable_name}")
+            return token_from_env
+        
         url = urlparse(service)
 
         # Do a quick check to see if this service URL applies to us.

@@ -23,6 +23,20 @@ hosted within CodeArtifact. It will use any appropriate AWS credentials provided
 --index-url https://${DOMAIN}-${ACCOUNT}.d.codeartifact.${REGION}.amazonaws.com/pypi/${REPOSITORY}/simple/
 ```
 
+### Environment Variable
+
+You can bypass AWS API calls by setting the `CODEARTIFACT_AUTH_TOKEN` environment variable:
+
+```bash
+# Set the environment variable with a valid token
+export CODEARTIFACT_AUTH_TOKEN=your-auth-token-here
+
+# Then use pip/twine as usual, and the token will be used automatically
+pip install package-name --index-url https://${DOMAIN}-${ACCOUNT}.d.codeartifact.${REGION}.amazonaws.com/pypi/${REPOSITORY}/simple/
+```
+
+This is especially useful in CI/CD environments or when you want to avoid making AWS API calls.
+
 Config
 ------
 This backend provides a number of configuration options to modify the behaviour of the AWS client.
