@@ -1,9 +1,9 @@
 # test_config.py -- config parsing tests
 
-import pytest
-
 from io import StringIO
 from os.path import dirname, join
+
+import pytest
 
 from keyrings.codeartifact import CodeArtifactKeyringConfig
 

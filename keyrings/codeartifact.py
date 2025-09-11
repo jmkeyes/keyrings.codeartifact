@@ -1,19 +1,17 @@
 # codeartifact.py -- keyring backend
 
-import re
 import logging
+import os
+import re
+from configparser import RawConfigParser
+from datetime import datetime
+from typing import NamedTuple
+from urllib.parse import urlparse
 
 import boto3
 import boto3.session
-
-from datetime import datetime
-from urllib.parse import urlparse
-
 from keyring import backend, credentials
 from keyring.util.platform_ import config_root
-
-from typing import NamedTuple
-from configparser import RawConfigParser
 
 
 class Qualifier(NamedTuple):
@@ -180,11 +178,13 @@ class CodeArtifactBackend(backend.KeyringBackend):
         # Options for the client callback.
         options = {
             # Pass in the region name.
-            "region_name": region,
+            "region_name": os.environ.get("AWS_REGION")
+            or os.environ.get("AWS_DEFAULT_REGION")
+            or region,
         }
 
         # Extract any AWS profile name we should use.
-        profile_name = config.get("profile_name")
+        profile_name = os.environ.get("AWS_PROFILE") or config.get("profile_name")
         if profile_name:
             options.update({"profile_name": profile_name})
 
@@ -202,8 +202,18 @@ class CodeArtifactBackend(backend.KeyringBackend):
                 options.update({"verify": verify.strip('"')})
 
         # If static access/secret keys were provided, use them.
-        aws_access_key_id = config.get("aws_access_key_id")
-        aws_secret_access_key = config.get("aws_secret_access_key")
+        aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID") or config.get(
+            "aws_access_key_id"
+        )
+        aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or config.get(
+            "aws_secret_access_key"
+        )
+        aws_session_token = (
+            os.environ.get("AWS_SESSION_TOKEN")
+            or os.environ.get("AWS_SECURITY_TOKEN")
+            or config.get("aws_session_token")
+        )
+
         if aws_access_key_id and aws_secret_access_key:
             options.update(
                 {
@@ -211,6 +221,8 @@ class CodeArtifactBackend(backend.KeyringBackend):
                     "aws_secret_access_key": aws_secret_access_key,
                 }
             )
+            if aws_session_token:
+                options["aws_session_token"] = aws_session_token
 
         # Generate a CodeArtifact client using the callback.
         client = self.make_client(options)
