@@ -1,19 +1,20 @@
 # test_backend.py -- backend tests
 
-import pytest
-
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from urllib.parse import urlunparse
-from datetime import datetime, timedelta
 
+import pytest
 from botocore.stub import Stubber
 
-from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
-
-from keyrings.codeartifact import make_codeartifact_client
-from keyrings.codeartifact import CodeArtifactBackend, CodeArtifactKeyringConfig
+from keyrings.codeartifact import (
+    CodeArtifactBackend,
+    CodeArtifactKeyringConfig,
+    make_codeartifact_client,
+)
 
 REGION_NAME = "ca-central-1"
 CONFIG_DIR = Path(__file__).parent / "config"
@@ -171,3 +172,108 @@ def test_backend_default_options(configuration, assertions):
         backend = CodeArtifactBackend(config=config, make_client=make_client)
         url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
         credentials = backend.get_credential(url, None)
+
+
+@pytest.mark.parametrize(
+    ("env_vars", "config_content", "expected_options"),
+    [
+        # Environment variables override config file
+        (
+            {
+                "AWS_PROFILE": "env-profile",
+                "AWS_REGION": "env-region",
+                "AWS_ACCESS_KEY_ID": "env-key",
+                "AWS_SECRET_ACCESS_KEY": "env-secret",
+                "AWS_SESSION_TOKEN": "env-token",
+            },
+            """
+            [codeartifact]
+            profile_name = config-profile
+            aws_access_key_id = config-key
+            aws_secret_access_key = config-secret
+            aws_session_token = config-token
+            """,
+            {
+                "profile_name": "env-profile",
+                "region_name": "env-region",
+                "aws_access_key_id": "env-key",
+                "aws_secret_access_key": "env-secret",
+                "aws_session_token": "env-token",
+            },
+        ),
+        # AWS_DEFAULT_REGION fallback
+        (
+            {"AWS_DEFAULT_REGION": "default-region"},
+            "",
+            {"region_name": "default-region"},
+        ),
+        # AWS_SECURITY_TOKEN fallback
+        (
+            {
+                "AWS_ACCESS_KEY_ID": "key",
+                "AWS_SECRET_ACCESS_KEY": "secret",
+                "AWS_SECURITY_TOKEN": "security-token",
+            },
+            "",
+            {
+                "aws_access_key_id": "key",
+                "aws_secret_access_key": "secret",
+                "aws_session_token": "security-token",
+            },
+        ),
+        # Config file values when no env vars
+        (
+            {},
+            """
+            [codeartifact]
+            profile_name = config-profile
+            aws_access_key_id = config-key
+            aws_secret_access_key = config-secret
+            """,
+            {
+                "profile_name": "config-profile",
+                "aws_access_key_id": "config-key",
+                "aws_secret_access_key": "config-secret",
+            },
+        ),
+        # Region precedence: AWS_REGION takes priority over parsed region
+        ({"AWS_REGION": "env-region"}, "", {"region_name": "env-region"}),
+        # Only session token without keys should not include token
+        ({"AWS_SESSION_TOKEN": "token-only"}, "", {}),
+    ],
+)
+def test_environment_variable_precedence(
+    monkeypatch, env_vars: dict, config_content: str, expected_options: str
+):
+    # Clear existing environment variables and set test ones
+    for env_key in [
+        "AWS_PROFILE",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_SECURITY_TOKEN",
+    ]:
+        monkeypatch.delenv(env_key, raising=False)
+
+    for env_key, env_value in env_vars.items():
+        monkeypatch.setenv(env_key, env_value)
+
+    class DummyClient:
+        def get_authorization_token(self, *args, **kwargs):
+            return {}
+
+    def make_client(options):
+        # Assert that we received specific options.
+        for key, value in expected_options.items():
+            assert value == options.get(key)
+
+        # Ignore the rest.
+        return DummyClient()
+
+    with config_from_string(config_content) as config_file:
+        config = CodeArtifactKeyringConfig(config_file=config_file.name)
+        backend = CodeArtifactBackend(config=config, make_client=make_client)
+        url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
+        backend.get_credential(url, None)
