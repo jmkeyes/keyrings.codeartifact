@@ -170,4 +170,24 @@ def test_backend_default_options(configuration, assertions):
         config = CodeArtifactKeyringConfig(config_file=config_file.name)
         backend = CodeArtifactBackend(config=config, make_client=make_client)
         url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
-        credentials = backend.get_credential(url, None)
+        backend.get_credential(url, None)
+
+
+def test_get_credential_from_env(monkeypatch):
+    """
+    Tests that the backend can retrieve a token from an environment variable.
+    """
+    monkeypatch.setenv("CODEARTIFACT_AUTH_TOKEN", "ENV_TOKEN")
+
+    def make_client(options):
+        # This should not be called when token is in env
+        pytest.fail("make_client should not be called when token is in env")
+
+    config = CodeArtifactKeyringConfig(config_file=StringIO())
+    backend = CodeArtifactBackend(config=config, make_client=make_client)
+
+    url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
+    credentials = backend.get_credential(url, None)
+
+    assert credentials.username == "aws"
+    assert credentials.password == "ENV_TOKEN"
