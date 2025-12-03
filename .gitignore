@@ -27,3 +27,7 @@ MANIFEST
 # Environments
 .venv
 venv/
+
+# IDEs
+.idea/
+.vscode/
