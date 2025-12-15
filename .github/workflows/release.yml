@@ -55,7 +55,7 @@ jobs:
 
     steps:
     - name: 📥 Download the built artifacts.
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v7
       with:
         name: python-package-artifacts
         path: dist/
@@ -85,7 +85,7 @@ jobs:
 
     steps:
     - name: 📥 Download the built artifacts.
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v7
       with:
         name: python-package-artifacts
         path: dist/
@@ -107,7 +107,7 @@ jobs:
 
     steps:
     - name: 📥 Download the built artifacts.
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v7
       with:
         name: python-package-artifacts
         path: dist/
