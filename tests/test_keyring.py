@@ -1,11 +1,9 @@
 # test_keyring.py -- keyring tests
 
-import pytest
+from urllib.parse import urlunparse
 
 import keyring
-
-from urllib.parse import urlunparse
-from datetime import datetime, timedelta
+import pytest
 
 from keyrings.codeartifact import CodeArtifactBackend
 
