@@ -1,5 +1,8 @@
 # test_backend.py -- backend tests
 
+import re
+
+import boto3
 import pytest
 
 from io import StringIO
@@ -12,7 +15,7 @@ from botocore.stub import Stubber
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
 
-from keyrings.codeartifact import make_codeartifact_client
+from keyrings.codeartifact import default_role_session_name, make_codeartifact_client
 from keyrings.codeartifact import CodeArtifactBackend, CodeArtifactKeyringConfig
 
 REGION_NAME = "ca-central-1"
@@ -151,6 +154,29 @@ def test_get_credential_supported_host():
                 "verify": "./path/to/certificate.pem",
             },
         ),
+        # Passing an assume-role ARN and explicit session name through.
+        (
+            """
+            [codeartifact]
+            assume_role_arn = arn:aws:iam::000000000000:role/role
+            assume_role_session_name = SESSION-NAME
+            """,
+            {
+                "assume_role_arn": "arn:aws:iam::000000000000:role/role",
+                "assume_role_session_name": "SESSION-NAME",
+            },
+        ),
+        # A session name is only forwarded alongside a role ARN.
+        (
+            """
+            [codeartifact]
+            assume_role_session_name = SESSION-NAME
+            """,
+            {
+                "assume_role_arn": None,
+                "assume_role_session_name": None,
+            },
+        ),
     ],
 )
 def test_backend_default_options(configuration, assertions):
@@ -171,3 +197,110 @@ def test_backend_default_options(configuration, assertions):
         backend = CodeArtifactBackend(config=config, make_client=make_client)
         url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
         credentials = backend.get_credential(url, None)
+
+
+def test_default_role_session_name():
+    # The default name is derived from the caller's STS UserId; any characters
+    # AWS doesn't permit in a RoleSessionName are sanitized away.
+    sts_client = boto3.session.Session(region_name=REGION_NAME).client(
+        "sts", region_name=REGION_NAME
+    )
+
+    stubber = Stubber(sts_client)
+    stubber.add_response(
+        "get_caller_identity",
+        {
+            "UserId": "AROAEXAMPLEID:weird session/name",
+            "Account": "000000000000",
+            "Arn": "arn:aws:sts::000000000000:assumed-role/role/weird",
+        },
+        {},
+    )
+    stubber.activate()
+
+    name = default_role_session_name(sts_client)
+
+    assert name == "keyrings.codeartifact-AROAEXAMPLEID-weird-session-name"
+    assert len(name) <= 64
+    assert re.fullmatch(r"[\w+=,.@-]+", name)
+    stubber.assert_no_pending_responses()
+
+
+@pytest.mark.parametrize(
+    "session_name_options",
+    [
+        # An explicitly configured role session name.
+        {"assume_role_session_name": "SESSION-NAME"},
+        # No session name: a default identifying the caller is generated.
+        {},
+    ],
+)
+def test_make_codeartifact_client_assumes_role(monkeypatch, session_name_options):
+    role_arn = "arn:aws:iam::000000000000:role/role"
+
+    # Build real clients up front so we can attach a stub to STS.
+    real_session = boto3.session.Session(region_name=REGION_NAME)
+    sts_client = real_session.client("sts", region_name=REGION_NAME)
+    codeartifact_client = real_session.client("codeartifact", region_name=REGION_NAME)
+
+    sts_stubber = Stubber(sts_client)
+
+    explicit_session_name = session_name_options.get("assume_role_session_name")
+    if explicit_session_name:
+        expected_session_name = explicit_session_name
+    else:
+        # Without a configured name, the default is derived from the caller's
+        # STS UserId via GetCallerIdentity.
+        sts_stubber.add_response(
+            "get_caller_identity",
+            {
+                "UserId": "AIDAEXAMPLEUSERID",
+                "Account": "000000000000",
+                "Arn": "arn:aws:iam::000000000000:user/example",
+            },
+            {},
+        )
+        expected_session_name = "keyrings.codeartifact-AIDAEXAMPLEUSERID"
+
+    sts_stubber.add_response(
+        "assume_role",
+        {
+            "Credentials": {
+                "AccessKeyId": "TEMP-ACCESS-KEY-ID",
+                "SecretAccessKey": "TEMP-SECRET-ACCESS-KEY",
+                "SessionToken": "TEMP-SESSION-TOKEN",
+                "Expiration": current_time() + timedelta(hours=1),
+            },
+        },
+        {"RoleArn": role_arn, "RoleSessionName": expected_session_name},
+    )
+    sts_stubber.activate()
+
+    created_sessions = []
+
+    class FakeSession:
+        def __init__(self, *args, **kwargs):
+            self.kwargs = kwargs
+            created_sessions.append(self)
+
+        def client(self, service, **kwargs):
+            return sts_client if service == "sts" else codeartifact_client
+
+    # Swap the session factory so we control the clients that get created.
+    monkeypatch.setattr(boto3.session, "Session", FakeSession)
+
+    options = {"region_name": REGION_NAME, "assume_role_arn": role_arn}
+    options.update(session_name_options)
+
+    client = make_codeartifact_client(options)
+
+    # The returned client is built from the assumed role's session.
+    assert client is codeartifact_client
+    sts_stubber.assert_no_pending_responses()
+
+    # The final session was created from the temporary credentials.
+    assert created_sessions[-1].kwargs["aws_access_key_id"] == "TEMP-ACCESS-KEY-ID"
+    assert (
+        created_sessions[-1].kwargs["aws_secret_access_key"] == "TEMP-SECRET-ACCESS-KEY"
+    )
+    assert created_sessions[-1].kwargs["aws_session_token"] == "TEMP-SESSION-TOKEN"
