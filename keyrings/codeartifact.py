@@ -119,7 +119,11 @@ def make_codeartifact_client(options):
 
 
 class CodeArtifactBackend(backend.KeyringBackend):
-    HOST_REGEX = r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$"
+    # Classic and dualstack (IPv6-capable) repository endpoint hostnames.
+    HOST_REGEXES = (
+        r"^(.+)-(\d{12})\.d\.codeartifact\.([^\.]+)\.amazonaws\.com$",
+        r"^(.+)-(\d{12})\.codeartifact\.([^\.]+)\.on\.aws$",
+    )
     PATH_REGEX = r"^/pypi/([^/]+)/?"
 
     priority = 9.9
@@ -147,11 +151,17 @@ class CodeArtifactBackend(backend.KeyringBackend):
         url = urlparse(service)
 
         # Do a quick check to see if this service URL applies to us.
-        if url.hostname is None or not url.hostname.endswith(".amazonaws.com"):
+        if url.hostname is None or not url.hostname.endswith(
+            (".amazonaws.com", ".on.aws")
+        ):
             return
 
         # Split the hostname into its components.
-        host_match = re.fullmatch(self.HOST_REGEX, url.hostname)
+        host_match = None
+        for pattern in self.HOST_REGEXES:
+            host_match = re.fullmatch(pattern, url.hostname)
+            if host_match:
+                break
 
         # If it didn't match the regex, it doesn't apply to us.
         if not host_match:
