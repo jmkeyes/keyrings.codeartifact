@@ -25,13 +25,17 @@ def current_time():
     return datetime.now(tz=tzinfo)
 
 
-def codeartifact_url(domain, owner, region, path):
-    netloc = f"{domain}-{owner}.d.codeartifact.{region}.amazonaws.com"
+CLASSIC_NETLOC = "{domain}-{owner}.d.codeartifact.{region}.amazonaws.com"
+DUALSTACK_NETLOC = "{domain}-{owner}.codeartifact.{region}.on.aws"
+
+
+def codeartifact_url(domain, owner, region, path, netloc_format=CLASSIC_NETLOC):
+    netloc = netloc_format.format(domain=domain, owner=owner, region=region)
     return urlunparse(("https", netloc, path, "", "", ""))
 
 
-def codeartifact_pypi_url(domain, owner, region, name):
-    return codeartifact_url(domain, owner, region, f"/pypi/{name}/")
+def codeartifact_pypi_url(domain, owner, region, name, netloc_format=CLASSIC_NETLOC):
+    return codeartifact_url(domain, owner, region, f"/pypi/{name}/", netloc_format)
 
 
 @contextmanager
@@ -45,7 +49,8 @@ def config_from_string(content: str):
         yield cfg
 
 
-def test_get_credential_supported_host():
+@pytest.mark.parametrize("netloc_format", [CLASSIC_NETLOC, DUALSTACK_NETLOC])
+def test_get_credential_supported_host(netloc_format):
     def make_client(options):
         client = make_codeartifact_client(options)
         stubber = Stubber(client)
@@ -71,7 +76,7 @@ def test_get_credential_supported_host():
     config = CodeArtifactKeyringConfig(config_file=StringIO())
     backend = CodeArtifactBackend(config=config, make_client=make_client)
 
-    url = codeartifact_pypi_url("domain", "000000000000", "region", "name")
+    url = codeartifact_pypi_url("domain", "000000000000", "region", "name", netloc_format)
     credentials = backend.get_credential(url, None)
 
     assert credentials.username == "aws"

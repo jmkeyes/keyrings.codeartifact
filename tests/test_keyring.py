@@ -15,6 +15,11 @@ def codeartifact_url(domain, owner, region, path):
     return urlunparse(("https", netloc, path, "", "", ""))
 
 
+def codeartifact_dualstack_url(domain, owner, region, path):
+    netloc = f"{domain}-{owner}.codeartifact.{region}.on.aws"
+    return urlunparse(("https", netloc, path, "", "", ""))
+
+
 def codeartifact_pypi_url(domain, owner, region, name):
     return codeartifact_url(domain, owner, region, f"/pypi/{name}/")
 
@@ -44,7 +49,9 @@ def test_delete_password_raises(backend):
     [
         "https://example.com/",
         "https://unknown.amazonaws.com/",
+        "https://unknown.on.aws/",
         codeartifact_url("domain", "owner", "region", "/maven/repo/"),
+        codeartifact_dualstack_url("domain", "owner", "region", "/maven/repo/"),
     ],
 )
 def test_get_credential_unsupported_host(backend, service):
